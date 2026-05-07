@@ -13,8 +13,7 @@
 
 ## 📋 요구사항
 
-- **Python 3.11 이상** (PEP 604 union 문법 사용으로 3.11+ 필수)
-- macOS / Linux (Windows는 WSL 권장)
+- **Python 3.11 이상** (안정성 및 향후 호환성을 위해 3.11+ 권장)
 - 4GB 이상 RAM (AI 모델 로딩 시)
 
 ## 🚀 빠른 시작
@@ -33,7 +32,21 @@ python3.11 --version
 ```bash
 brew install python@3.11
 ```
-윈도우는 찾아봐주세요 ..
+
+### Windows
+
+1. [python.org/downloads](https://www.python.org/downloads/)에서 **Python 3.11** Windows installer를 다운로드합니다.
+2. 설치 첫 화면에서 **"Add python.exe to PATH"** 를 반드시 체크한 후 `Install Now`를 클릭합니다.
+3. 설치 완료 후 CMD 또는 PowerShell에서 버전을 확인합니다:
+```bat
+   python --version
+   # Python 3.11.x 가 떠야 정상
+   ```
+4. 가상환경 활성화 명령어는 **Windows에서 다릅니다** 2번 내용이 아닌 이 내용을 참고해주세요:
+   ```bat
+   python -m venv .venv
+   .venv\Scripts\activate
+   ```
 
 ### 2. 프로젝트 클론 및 가상환경 설정
 
@@ -73,7 +86,7 @@ uvicorn app.main:app --reload --port 8000
 
 ## 📁 프로젝트 구조
 
-```
+```text
 ai/
 ├── app/
 │   ├── __init__.py
@@ -110,7 +123,7 @@ ai/
 
 ## 🏗 아키텍처
 
-```
+```text
 [Spring Boot 백엔드] ──HTTP POST──▶ [FastAPI AI 서버]
                                           │
                                           ├─ TextDetector  (OCR)
@@ -147,7 +160,7 @@ pip freeze > requirements.txt
 
 ### 커밋 컨벤션
 
-```
+```text
 type: 설명 (#이슈번호)
 
 예시:
