@@ -1,91 +1,93 @@
 """
 도면 분석 API 라우터.
 
-Spring Boot의 @RestController + @RequestMapping과 같은 역할.
-관련 엔드포인트들을 한 파일에 묶어서 main.py가 앱에 등록한다.
+이 라우터는 오케스트레이터 역할을 한다:
+1. 백엔드로부터 분석 요청 수신
+2. 각 detector(text, object, poi, graph)를 순서대로 호출
+3. 결과를 합쳐서 응답 반환
+
+각 detector의 실제 구현은 app/services/ 안에 있으며, Detector 베이스 클래스를
+상속받아 같은 인터페이스(detect 메서드)를 따른다.
 """
 
 import time
-from uuid import UUID
-from fastapi import APIRouter, HTTPException
+
+from fastapi import APIRouter
 
 from app.schemas.analyze import (
     AnalyzeRequest,
     AnalyzeResponse,
-    Detection,
 )
+from app.services.text_detector import TextDetector
+from app.services.object_detector import ObjectDetector
+from app.services.poi_detector import PoiDetector
+from app.services.graph_detector import GraphDetector
 
 
-# APIRouter는 "엔드포인트 모음".
-# prefix를 주면 모든 경로 앞에 자동으로 붙음.
-# (예: /analyze가 자동으로 /api/v1/analyze가 됨)
 router = APIRouter(
     prefix="/api/v1",
-    tags=["analyze"],          # Swagger에서 그룹핑 라벨
+    tags=["analyze"],
 )
+
+
+# Detector 인스턴스 생성 (모듈 로드 시 한 번만)
+# 추후 모델 로딩 무거워지면 FastAPI Dependency Injection으로 변경 가능
+text_detector = TextDetector()
+object_detector = ObjectDetector()
+poi_detector = PoiDetector()
+graph_detector = GraphDetector()
 
 
 @router.post(
     "/analyze",
-    response_model=AnalyzeResponse,    # 응답 형식 명시 (검증 + Swagger)
+    response_model=AnalyzeResponse,
     summary="도면 이미지 분석",
     description="""
     백엔드가 도면 이미지 URL을 보내면 AI가 분석하여 객체 감지 결과를 반환한다.
     
-    ⚠️ 현재는 더미 응답을 반환하는 스켈레톤 단계.
-    실제 OpenCV/YOLO/OCR 처리는 다음 이슈에서 추가 예정.
+    내부적으로 4개의 detector를 순차 호출:
+    1. TextDetector: OCR로 텍스트 추출
+    2. ObjectDetector: YOLO로 벽/문/엘리베이터 감지
+    3. PoiDetector: 텍스트 결과 활용해 POI 후보 식별
+    4. GraphDetector: 오브젝트 결과로 노드/엣지 후보 생성
+    
+    현재는 모든 detector가 더미 데이터를 반환하는 스켈레톤 단계.
     """,
 )
 def analyze_floorplan(request: AnalyzeRequest) -> AnalyzeResponse:
     """
     도면 분석 엔드포인트.
     
-    @router.post("/analyze")가 만나게 되는 흐름:
-    1. FastAPI가 들어온 JSON을 AnalyzeRequest로 자동 변환·검증
-    2. 검증 통과하면 이 함수 실행
-    3. 반환값을 JSON으로 자동 직렬화하여 응답
+    각 detector를 호출하여 결과를 합쳐 반환한다. 의존성이 있는 detector는
+    이전 결과를 인자로 받는다 (POI는 text 결과, Graph는 object 결과 활용).
     """
     start_time = time.time()
-    
-    # ⚠️ 더미 응답 - 실제 AI 분석은 다음 이슈에서 구현
-    dummy_detections = [
-        Detection(
-            detect_type="wall",
-            confidence=0.92,
-            geom_px={
-                "type": "LineString",
-                "coordinates": [[100, 200], [500, 200]],
-            },
-            bbox_px=[100, 195, 400, 10],
-            label="wall_horizontal",
-        ),
-        Detection(
-            detect_type="door",
-            confidence=0.88,
-            geom_px={
-                "type": "LineString",
-                "coordinates": [[300, 200], [320, 200]],
-            },
-            bbox_px=[300, 195, 20, 10],
-        ),
-        Detection(
-            detect_type="text",
-            confidence=0.95,
-            geom_px={
-                "type": "Point",
-                "coordinates": [350, 250],
-            },
-            ocr_text="202호",
-            label="room_number",
-        ),
-    ]
-    
+
+    # TODO: 실제로는 image_url에서 이미지 다운로드 후 image_path로 전달
+    # 현재는 더미라 image_path를 그냥 image_url로 넘김
+    image_path = request.image_url
+
+    # 1) 텍스트 추출
+    texts = text_detector.detect(image_path)
+
+    # 2) 오브젝트 추출 (텍스트와 독립)
+    objects = object_detector.detect(image_path)
+
+    # 3) POI 추출 (텍스트 결과 활용)
+    pois = poi_detector.detect(image_path, text_detections=texts)
+
+    # 4) 노드·엣지 추출 (오브젝트 결과 활용)
+    graph = graph_detector.detect(image_path, object_detections=objects)
+
+    # 모든 결과 합치기
+    all_detections = texts + objects + pois + graph
+
     elapsed_ms = int((time.time() - start_time) * 1000)
-    
+
     return AnalyzeResponse(
         floorplan_id=request.floorplan_id,
-        model_version=(request.options.model_version 
+        model_version=(request.options.model_version
                        if request.options else "v1.0"),
         processing_time_ms=elapsed_ms,
-        detections=dummy_detections,
+        detections=all_detections,
     )
