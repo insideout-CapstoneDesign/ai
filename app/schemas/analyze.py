@@ -22,8 +22,9 @@ from pydantic import BaseModel, Field
 class AnalyzeOptions(BaseModel):
     """AI 분석 시 사용할 옵션 (선택사항)."""
 
-    model_version: Optional[str] = Field(
+    model_version: str = Field(
         default="v1.0",
+        min_length=1,
         description="사용할 AI 모델 버전",
         examples=["v1.0"],
     )
