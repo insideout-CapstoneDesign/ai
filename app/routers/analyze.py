@@ -10,10 +10,12 @@
 상속받아 같은 인터페이스(detect 메서드)를 따른다.
 """
 
+import logging
 import time
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
+from app.core.image_loader import download_image, cleanup_image
 from app.schemas.analyze import (
     AnalyzeRequest,
     AnalyzeResponse,
@@ -23,6 +25,7 @@ from app.services.object_detector import ObjectDetector
 from app.services.poi_detector import PoiDetector
 from app.services.graph_detector import GraphDetector
 
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/api/v1",
@@ -57,37 +60,54 @@ graph_detector = GraphDetector()
 def analyze_floorplan(request: AnalyzeRequest) -> AnalyzeResponse:
     """
     도면 분석 엔드포인트.
-    
-    각 detector를 호출하여 결과를 합쳐 반환한다. 의존성이 있는 detector는
-    이전 결과를 인자로 받는다 (POI는 text 결과, Graph는 object 결과 활용).
+
+    흐름:
+    1. image_url에서 이미지 다운로드 (S3 또는 HTTP)
+    2. 4개 detector 순차 호출
+    3. 결과 합쳐 반환
+    4. 임시 파일 정리 (성공/실패 무관)
     """
     start_time = time.time()
+    local_path = None                        
 
-    # TODO: 실제로는 image_url에서 이미지 다운로드 후 image_path로 전달
-    # 현재는 더미라 image_path를 그냥 image_url로 넘김
-    image_path = request.image_url
+    try:                                       
+        # ✏️ 변경: 이전엔 image_path = request.image_url 였음
+        # 이제는 진짜 다운로드
+        try:
+            local_path = download_image(request.image_url)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except IOError as e:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Image fetch failed: {e}",
+            )
 
-    # 1) 텍스트 추출
-    texts = text_detector.detect(image_path)
+        # 1) 텍스트 추출
+        texts = text_detector.detect(local_path)     # ✏️ image_path → local_path
 
-    # 2) 오브젝트 추출 (텍스트와 독립)
-    objects = object_detector.detect(image_path)
+        # 2) 오브젝트 추출
+        objects = object_detector.detect(local_path) 
 
-    # 3) POI 추출 (텍스트 결과 활용)
-    pois = poi_detector.detect(image_path, text_detections=texts)
+        # 3) POI 추출 (텍스트 결과 활용)
+        pois = poi_detector.detect(local_path, text_detections=texts)       
 
-    # 4) 노드·엣지 추출 (오브젝트 결과 활용)
-    graph = graph_detector.detect(image_path, object_detections=objects)
+        # 4) 노드·엣지 추출 (오브젝트 결과 활용)
+        graph = graph_detector.detect(local_path, object_detections=objects) #
 
-    # 모든 결과 합치기
-    all_detections = texts + objects + pois + graph
+        all_detections = texts + objects + pois + graph
 
-    elapsed_ms = int((time.time() - start_time) * 1000)
+        elapsed_ms = int((time.time() - start_time) * 1000)
 
-    return AnalyzeResponse(
-        floorplan_id=request.floorplan_id,
-        model_version=(request.options.model_version
-                       if request.options else "v1.0"),
-        processing_time_ms=elapsed_ms,
-        detections=all_detections,
-    )
+        return AnalyzeResponse(
+            floorplan_id=request.floorplan_id,
+            model_version=(request.options.model_version
+                           if request.options else "v1.0"),
+            processing_time_ms=elapsed_ms,
+            detections=all_detections,
+        )
+
+    finally:                                        
+        # 임시 파일 정리 (성공/실패 무관)
+        if local_path:
+            cleanup_image(local_path)   
