@@ -118,6 +118,24 @@ class Settings(BaseSettings):
         default="ko",
         description="OCR 인식 언어 (ko/en)",
     )
+    ocr_gpu: bool = Field(
+        default=False,
+        description="EasyOCR GPU 사용 여부",
+    )
+    ocr_model_storage_dir: Optional[str] = Field(
+        default=None,
+        description="EasyOCR 모델 파일 저장 경로",
+    )
+    ocr_download_enabled: bool = Field(
+        default=True,
+        description="EasyOCR 모델 자동 다운로드 허용 여부",
+    )
+    ocr_confidence_threshold: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="OCR 결과 최소 신뢰도",
+    )
 
 
 @lru_cache
