@@ -49,3 +49,5 @@ Thumbs.db
 *.pb
 models/cache/
 data/raw/
+datasets/
+runs/
