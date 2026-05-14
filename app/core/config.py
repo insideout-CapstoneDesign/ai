@@ -108,11 +108,23 @@ class Settings(BaseSettings):
     )
 
     # ============================
-    # AI 모델 경로 — 실제 AI 구현 시 사용
+    # AI/CV 설정
     # ============================
-    yolo_model_path: Optional[str] = Field(
-        default=None,
-        description="YOLO 모델 가중치 파일 경로",
+    icon_template_dir: str = Field(
+        default="app/assets/icon_templates",
+        description="POI 아이콘 템플릿 이미지 디렉터리",
+    )
+    icon_template_match_threshold: float = Field(
+        default=0.75,
+        ge=0.0,
+        le=1.0,
+        description="아이콘 템플릿 매칭 최소 유사도",
+    )
+    icon_template_nms_threshold: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="아이콘 템플릿 매칭 중복 제거 IoU 기준",
     )
     ocr_language: str = Field(
         default="ko",

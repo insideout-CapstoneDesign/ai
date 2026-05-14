@@ -63,6 +63,7 @@ class TextDetector(Detector):
                 )
             )
 
+        detections = self._merge_stacked_texts(detections)
         logger.info("Detected %d text regions from %s", len(detections), image_path)
         return detections
 
@@ -129,3 +130,143 @@ class TextDetector(Detector):
     @staticmethod
     def _clamp_confidence(confidence: Any) -> float:
         return max(0.0, min(1.0, float(confidence)))
+
+    @classmethod
+    def _merge_stacked_texts(cls, detections: List[Detection]) -> List[Detection]:
+        """
+        Merge tightly stacked OCR lines into one text detection.
+
+        Floorplan shop names are sometimes rendered on two lines, e.g.
+        "보테가" + "베네타". EasyOCR returns them as separate boxes, so this
+        merges only small boxes that are horizontally aligned and almost
+        touching vertically. Larger labels and legend rows stay separate.
+        """
+        unused = sorted(
+            detections,
+            key=lambda detection: (
+                detection.bbox_px[1] if detection.bbox_px else 0,
+                detection.bbox_px[0] if detection.bbox_px else 0,
+            ),
+        )
+        merged: List[Detection] = []
+
+        while unused:
+            group = [unused.pop(0)]
+            changed = True
+
+            while changed:
+                changed = False
+                for candidate in list(unused):
+                    if cls._can_merge_text_group(group, candidate):
+                        group.append(candidate)
+                        unused.remove(candidate)
+                        changed = True
+                        break
+
+            merged.append(cls._merge_text_group(group))
+
+        return sorted(
+            merged,
+            key=lambda detection: (
+                detection.bbox_px[1] if detection.bbox_px else 0,
+                detection.bbox_px[0] if detection.bbox_px else 0,
+            ),
+        )
+
+    @classmethod
+    def _can_merge_text_group(
+        cls,
+        group: List[Detection],
+        candidate: Detection,
+    ) -> bool:
+        if candidate.bbox_px is None or not candidate.ocr_text:
+            return False
+        if any(member.bbox_px is None or not member.ocr_text for member in group):
+            return False
+
+        group_bbox = cls._union_bbox([member.bbox_px for member in group])
+        candidate_bbox = candidate.bbox_px
+
+        if not cls._is_mergeable_text_box(group_bbox):
+            return False
+        if not cls._is_mergeable_text_box(candidate_bbox):
+            return False
+
+        vertical_gap = candidate_bbox[1] - (group_bbox[1] + group_bbox[3])
+        if vertical_gap < -max(group_bbox[3], candidate_bbox[3]) * 0.5:
+            return False
+        if vertical_gap > min(12.0, max(group_bbox[3], candidate_bbox[3]) * 0.6):
+            return False
+
+        overlap_ratio = cls._horizontal_overlap_ratio(group_bbox, candidate_bbox)
+        if overlap_ratio < 0.45:
+            return False
+
+        group_center_x = group_bbox[0] + group_bbox[2] / 2
+        candidate_center_x = candidate_bbox[0] + candidate_bbox[2] / 2
+        max_width = max(group_bbox[2], candidate_bbox[2])
+        return abs(group_center_x - candidate_center_x) <= max_width * 0.35
+
+    @staticmethod
+    def _is_mergeable_text_box(bbox: List[float]) -> bool:
+        _, _, width, height = bbox
+        return height <= 35 and width <= 130
+
+    @classmethod
+    def _merge_text_group(cls, group: List[Detection]) -> Detection:
+        if len(group) == 1:
+            return group[0]
+
+        ordered = sorted(group, key=lambda detection: detection.bbox_px[1])
+        bbox = cls._union_bbox([detection.bbox_px for detection in ordered])
+        confidence = sum(detection.confidence for detection in ordered) / len(ordered)
+        text = " ".join(detection.ocr_text for detection in ordered if detection.ocr_text)
+        polygon = cls._bbox_to_polygon(bbox)
+
+        return Detection(
+            detect_type="text",
+            confidence=confidence,
+            geom_px={
+                "type": "Polygon",
+                "coordinates": [polygon + [polygon[0]]],
+            },
+            bbox_px=bbox,
+            label="ocr_text",
+            ocr_text=text,
+        )
+
+    @staticmethod
+    def _union_bbox(bboxes: List[List[float]]) -> List[float]:
+        min_x = min(bbox[0] for bbox in bboxes)
+        min_y = min(bbox[1] for bbox in bboxes)
+        max_x = max(bbox[0] + bbox[2] for bbox in bboxes)
+        max_y = max(bbox[1] + bbox[3] for bbox in bboxes)
+        return [min_x, min_y, max_x - min_x, max_y - min_y]
+
+    @staticmethod
+    def _bbox_to_polygon(bbox: List[float]) -> List[List[float]]:
+        x, y, width, height = bbox
+        right = x + width
+        bottom = y + height
+        return [
+            [x, y],
+            [right, y],
+            [right, bottom],
+            [x, bottom],
+        ]
+
+    @staticmethod
+    def _horizontal_overlap_ratio(
+        first_bbox: List[float],
+        second_bbox: List[float],
+    ) -> float:
+        first_left = first_bbox[0]
+        first_right = first_bbox[0] + first_bbox[2]
+        second_left = second_bbox[0]
+        second_right = second_bbox[0] + second_bbox[2]
+
+        overlap = max(0.0, min(first_right, second_right) - max(first_left, second_left))
+        smaller_width = min(first_bbox[2], second_bbox[2])
+        if smaller_width <= 0:
+            return 0.0
+        return overlap / smaller_width
