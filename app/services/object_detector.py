@@ -24,7 +24,6 @@ DetectType = Literal[
     "elevator",
     "stair",
     "escalator",
-    "restroom_sign",
     "accessible_restroom",
     "aed",
     "atm",
