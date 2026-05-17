@@ -77,23 +77,26 @@ class PoiDetector(Detector):
 
     def detect(
         self,
-        _image_path: str,
+        image_path: str,
         text_detections: List[Detection] | None = None,
         object_detections: List[Detection] | None = None,
     ) -> List[Detection]:
+        # Kept for the shared Detector interface; POI extraction uses upstream detections.
+        _ = image_path
         texts = text_detections or []
         objects = object_detections or []
 
-        candidates = self._from_objects(objects, texts)
-        candidates.extend(self._from_texts(texts))
+        candidates, matched_text_ids = self._from_objects(objects, texts)
+        candidates.extend(self._from_texts(texts, matched_text_ids))
         return candidates
 
     def _from_objects(
         self,
         objects: Iterable[Detection],
         texts: list[Detection],
-    ) -> list[Detection]:
+    ) -> tuple[list[Detection], set[int]]:
         candidates: list[Detection] = []
+        matched_text_ids: set[int] = set()
 
         for detection in objects:
             category = self._category_for_object(detection)
@@ -107,6 +110,7 @@ class PoiDetector(Detector):
             matched_text = self._nearest_text(detection, texts, category)
             confidence = detection.confidence
             if matched_text is not None:
+                matched_text_ids.add(id(matched_text))
                 confidence = min(
                     1.0,
                     (detection.confidence * 0.7) + (matched_text.confidence * 0.3),
@@ -126,15 +130,19 @@ class PoiDetector(Detector):
                 )
             )
 
-        return candidates
+        return candidates, matched_text_ids
 
     def _from_texts(
         self,
         texts: Iterable[Detection],
+        excluded_text_ids: set[int],
     ) -> list[Detection]:
         candidates: list[Detection] = []
 
         for detection in texts:
+            if id(detection) in excluded_text_ids:
+                continue
+
             text = self._clean_text(detection.ocr_text)
             if not text:
                 continue
