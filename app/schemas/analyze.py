@@ -66,6 +66,12 @@ class Detection(BaseModel):
         # 외부 (단지)
         "building", "gate", "road", "sidewalk",
         "crosswalk", "parking", "landmark",
+        # POI 아이콘
+        "accessible_restroom", "aed", "atm", "cafe",
+        "clothing_alteration", "family_restroom", "infodesk",
+        "phone_charging", "restroom_female", "restroom_male",
+        "shoe_repair", "storage_locker", "subway_station",
+        "water_fountain",
         # 공통
         "text", "poi_candidate", "node_candidate", "edge_candidate",
     ] = Field(
