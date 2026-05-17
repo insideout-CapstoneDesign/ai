@@ -7,6 +7,7 @@ This detector converts OCR text detections and object/icon detections into
 from __future__ import annotations
 
 import math
+import re
 from typing import Iterable, List
 
 from app.schemas.analyze import Detection
@@ -18,6 +19,7 @@ class PoiDetector(Detector):
 
     name = "poi"
     version = "v0.2-candidate-rules"
+    AFTER_SERVICE_PATTERN = re.compile(r"(?<![A-Z0-9])A\s*/?\s*S(?![A-Z0-9])")
 
     POI_OBJECT_LABELS: dict[str, str] = {
         "accessible_restroom": "facility.accessible_restroom",
@@ -30,6 +32,7 @@ class PoiDetector(Detector):
         "family_restroom": "facility.family_restroom",
         "infodesk": "facility.infodesk",
         "phone_charging": "facility.phone_charging",
+        "restroom_sign": "facility.restroom",
         "restroom_female": "facility.restroom_female",
         "restroom_male": "facility.restroom_male",
         "shoe_repair": "store.shoe_repair",
@@ -41,6 +44,7 @@ class PoiDetector(Detector):
     RESTROOM_CATEGORIES = {
         "facility.accessible_restroom",
         "facility.family_restroom",
+        "facility.restroom",
         "facility.restroom_female",
         "facility.restroom_male",
     }
@@ -53,7 +57,6 @@ class PoiDetector(Detector):
         ("ATM", "facility.atm"),
         ("카페", "facility.cafe"),
         ("커피", "facility.cafe"),
-        ("AS", "store.clothing_alteration"),
         ("수선", "store.clothing_alteration"),
         ("구두", "store.shoe_repair"),
         ("엘리베이터", "facility.elevator"),
@@ -180,6 +183,9 @@ class PoiDetector(Detector):
 
     def _category_for_text(self, text: str) -> str | None:
         normalized = text.upper().replace(" ", "")
+        if self.AFTER_SERVICE_PATTERN.search(text.upper()):
+            return "store.clothing_alteration"
+
         for keyword, category in self.KEYWORD_CATEGORIES:
             if keyword.upper().replace(" ", "") in normalized:
                 return category
