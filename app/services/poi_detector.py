@@ -77,12 +77,10 @@ class PoiDetector(Detector):
 
     def detect(
         self,
-        image_path: str,
+        _image_path: str,
         text_detections: List[Detection] | None = None,
         object_detections: List[Detection] | None = None,
     ) -> List[Detection]:
-        del image_path
-
         texts = text_detections or []
         objects = object_detections or []
 
