@@ -90,7 +90,11 @@ def analyze_floorplan(request: AnalyzeRequest) -> AnalyzeResponse:
         objects = object_detector.detect(local_path) 
 
         # 3) POI 추출 (텍스트 결과 활용)
-        pois = poi_detector.detect(local_path, text_detections=texts)       
+        pois = poi_detector.detect(
+            local_path,
+            text_detections=texts,
+            object_detections=objects,
+        )
 
         # 4) 노드·엣지 추출 (오브젝트 결과 활용)
         graph = graph_detector.detect(local_path, object_detections=objects) #
