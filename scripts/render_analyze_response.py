@@ -98,6 +98,8 @@ def _draw_detection(
         return
 
     if geom_type == "Polygon":
+        if not coordinates[0] or len(coordinates[0]) < 3:
+            return
         polygon = np.array(coordinates[0], dtype=np.int32)
         if detection.get("label") == "wall_outline":
             cv2.polylines(canvas, [polygon], isClosed=True, color=color, thickness=6)
@@ -106,6 +108,8 @@ def _draw_detection(
         cv2.fillPoly(overlay, [polygon], color)
         cv2.polylines(canvas, [polygon], isClosed=True, color=color, thickness=2)
     elif geom_type == "LineString":
+        if len(coordinates) < 2:
+            return
         line = np.array(coordinates, dtype=np.int32)
         cv2.polylines(canvas, [line], isClosed=False, color=color, thickness=3)
     elif geom_type == "Point":
