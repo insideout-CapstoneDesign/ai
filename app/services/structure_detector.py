@@ -39,10 +39,6 @@ class StructureDetector(Detector):
     ROOM_AREA_MIN_HEIGHT_PX = 24
     ENCLOSED_BLOCKED_MIN_AREA_RATIO = 0.0002
     APPROX_EPSILON_RATIO = 0.003
-    BOUNDARY_LINE_THRESHOLD = 130
-    BOUNDARY_MIN_LENGTH_RATIO = 0.035
-    BOUNDARY_MAX_GAP_PX = 8
-    STRUCTURAL_LINE_KERNEL_PX = 35
 
     def detect(
         self,
@@ -73,13 +69,7 @@ class StructureDetector(Detector):
             object_detections or [],
             min_area=max(120.0, image_area * self.ROOM_AREA_MIN_RATIO),
         )
-        boundary_detections = self._detect_boundaries(
-            gray,
-            content_mask,
-            walkable_mask,
-            blocked_mask,
-        )
-        outline_detections = self._detect_floorplan_outline(
+        outline_detections = self._detect_wall_outline(
             gray,
             content_mask,
         )
@@ -105,7 +95,6 @@ class StructureDetector(Detector):
         )
         detections.extend(room_area_detections)
         detections.extend(outline_detections)
-        detections.extend(boundary_detections)
 
         logger.info(
             "Detected %d structure areas from %s",
@@ -114,12 +103,12 @@ class StructureDetector(Detector):
         )
         return detections
 
-    def _detect_floorplan_outline(
+    def _detect_wall_outline(
         self,
         gray: cv2.typing.MatLike,
         content_mask: cv2.typing.MatLike,
     ) -> list[Detection]:
-        floorplan_mask = self._build_floorplan_outline_mask(gray, content_mask)
+        floorplan_mask = self._build_wall_outline_mask(gray, content_mask)
         contours, _ = cv2.findContours(
             floorplan_mask,
             cv2.RETR_EXTERNAL,
@@ -148,11 +137,11 @@ class StructureDetector(Detector):
                     float(width),
                     float(height),
                 ],
-                label="floorplan_outline",
+                label="wall_outline",
             )
         ]
 
-    def _build_floorplan_outline_mask(
+    def _build_wall_outline_mask(
         self,
         gray: cv2.typing.MatLike,
         content_mask: cv2.typing.MatLike,
@@ -239,25 +228,6 @@ class StructureDetector(Detector):
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
         return cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
 
-    def _filter_room_sized_mask(
-        self,
-        mask: cv2.typing.MatLike,
-    ) -> cv2.typing.MatLike:
-        contours, _ = cv2.findContours(
-            mask,
-            cv2.RETR_EXTERNAL,
-            cv2.CHAIN_APPROX_SIMPLE,
-        )
-        filtered = np.zeros_like(mask, dtype="uint8")
-        for contour in contours:
-            x, y, width, height = cv2.boundingRect(contour)
-            if (
-                width >= self.ROOM_AREA_MIN_WIDTH_PX
-                and height >= self.ROOM_AREA_MIN_HEIGHT_PX
-            ):
-                cv2.drawContours(filtered, [contour], -1, 255, thickness=-1)
-        return filtered
-
     def _is_room_sized_detection(self, detection: Detection) -> bool:
         if not detection.bbox_px:
             return False
@@ -307,264 +277,6 @@ class StructureDetector(Detector):
             parent_x <= center_x <= parent_x + parent_width
             and parent_y <= center_y <= parent_y + parent_height
         )
-
-    def _detect_boundaries(
-        self,
-        gray: cv2.typing.MatLike,
-        content_mask: cv2.typing.MatLike,
-        walkable_mask: cv2.typing.MatLike,
-        blocked_mask: cv2.typing.MatLike,
-    ) -> list[Detection]:
-        line_mask = self._build_structural_line_mask(gray, content_mask)
-        lines = cv2.HoughLinesP(
-            line_mask,
-            rho=1,
-            theta=np.pi / 180,
-            threshold=40,
-            minLineLength=max(30, int(min(gray.shape[:2]) * self.BOUNDARY_MIN_LENGTH_RATIO)),
-            maxLineGap=self.BOUNDARY_MAX_GAP_PX,
-        )
-
-        candidates = self._detect_wall_boundaries_from_blocked_contours(
-            blocked_mask,
-            walkable_mask,
-        )
-        if lines is not None:
-            for raw_line in lines.reshape(-1, 4):
-                x1, y1, x2, y2 = [int(value) for value in raw_line]
-                if not self._is_axis_aligned(x1, y1, x2, y2):
-                    continue
-
-                label = self._classify_boundary_line(
-                    x1,
-                    y1,
-                    x2,
-                    y2,
-                    walkable_mask,
-                    blocked_mask,
-                )
-                if label is None:
-                    continue
-
-                candidates.append((label, x1, y1, x2, y2))
-
-        detections: list[Detection] = []
-        for label, x1, y1, x2, y2 in self._merge_boundary_lines(candidates):
-            left = float(min(x1, x2))
-            top = float(min(y1, y2))
-            width = float(abs(x2 - x1) or 1)
-            height = float(abs(y2 - y1) or 1)
-            detections.append(
-                Detection(
-                    detect_type="wall",
-                    confidence=0.70,
-                    geom_px={
-                        "type": "LineString",
-                        "coordinates": [
-                            [float(x1), float(y1)],
-                            [float(x2), float(y2)],
-                        ],
-                    },
-                    bbox_px=[left, top, width, height],
-                    label=label,
-                )
-            )
-
-        return detections
-
-    def _detect_wall_boundaries_from_blocked_contours(
-        self,
-        blocked_mask: cv2.typing.MatLike,
-        walkable_mask: cv2.typing.MatLike,
-    ) -> list[tuple[str, int, int, int, int]]:
-        contours, _ = cv2.findContours(
-            blocked_mask,
-            cv2.RETR_EXTERNAL,
-            cv2.CHAIN_APPROX_SIMPLE,
-        )
-        min_length = max(30, int(min(blocked_mask.shape[:2]) * self.BOUNDARY_MIN_LENGTH_RATIO))
-        candidates: list[tuple[str, int, int, int, int]] = []
-
-        for contour in contours:
-            perimeter = cv2.arcLength(contour, closed=True)
-            approx = cv2.approxPolyDP(
-                contour,
-                epsilon=max(2.0, perimeter * self.APPROX_EPSILON_RATIO),
-                closed=True,
-            )
-            points = [tuple(point[0]) for point in approx]
-            if len(points) < 2:
-                continue
-
-            for index, start in enumerate(points):
-                end = points[(index + 1) % len(points)]
-                x1, y1 = [int(value) for value in start]
-                x2, y2 = [int(value) for value in end]
-                if abs(x2 - x1) + abs(y2 - y1) < min_length:
-                    continue
-                if not self._is_axis_aligned(x1, y1, x2, y2):
-                    continue
-
-                label = self._classify_boundary_line(
-                    x1,
-                    y1,
-                    x2,
-                    y2,
-                    walkable_mask,
-                    blocked_mask,
-                )
-                if label == "wall_boundary":
-                    candidates.append((label, x1, y1, x2, y2))
-
-        return candidates
-
-    def _build_structural_line_mask(
-        self,
-        gray: cv2.typing.MatLike,
-        content_mask: cv2.typing.MatLike,
-    ) -> cv2.typing.MatLike:
-        dark_mask = (gray < self.BOUNDARY_LINE_THRESHOLD).astype("uint8") * 255
-        dark_mask = cv2.bitwise_and(dark_mask, content_mask)
-        horizontal_kernel = cv2.getStructuringElement(
-            cv2.MORPH_RECT,
-            (self.STRUCTURAL_LINE_KERNEL_PX, 1),
-        )
-        vertical_kernel = cv2.getStructuringElement(
-            cv2.MORPH_RECT,
-            (1, self.STRUCTURAL_LINE_KERNEL_PX),
-        )
-        horizontal_lines = cv2.morphologyEx(dark_mask, cv2.MORPH_OPEN, horizontal_kernel)
-        vertical_lines = cv2.morphologyEx(dark_mask, cv2.MORPH_OPEN, vertical_kernel)
-        return cv2.bitwise_or(horizontal_lines, vertical_lines)
-
-    @classmethod
-    def _merge_boundary_lines(
-        cls,
-        lines: list[tuple[str, int, int, int, int]],
-    ) -> list[tuple[str, int, int, int, int]]:
-        grouped: dict[tuple[str, str, int], list[tuple[int, int]]] = {}
-        for label, x1, y1, x2, y2 in lines:
-            orientation = "h" if abs(x2 - x1) >= abs(y2 - y1) else "v"
-            if orientation == "h":
-                fixed = round(((y1 + y2) / 2) / 8) * 8
-                start, end = sorted((x1, x2))
-            else:
-                fixed = round(((x1 + x2) / 2) / 8) * 8
-                start, end = sorted((y1, y2))
-            grouped.setdefault((label, orientation, fixed), []).append((start, end))
-
-        merged_lines: list[tuple[str, int, int, int, int]] = []
-        for (label, orientation, fixed), ranges in grouped.items():
-            for start, end in cls._merge_ranges(ranges, max_gap=12):
-                if end - start < 30:
-                    continue
-                if orientation == "h":
-                    merged_lines.append((label, start, fixed, end, fixed))
-                else:
-                    merged_lines.append((label, fixed, start, fixed, end))
-
-        return merged_lines
-
-    @staticmethod
-    def _merge_ranges(
-        ranges: list[tuple[int, int]],
-        max_gap: int,
-    ) -> list[tuple[int, int]]:
-        if not ranges:
-            return []
-
-        merged = []
-        current_start, current_end = sorted(ranges)[0]
-        for start, end in sorted(ranges)[1:]:
-            if start <= current_end + max_gap:
-                current_end = max(current_end, end)
-            else:
-                merged.append((current_start, current_end))
-                current_start, current_end = start, end
-        merged.append((current_start, current_end))
-        return merged
-
-    @staticmethod
-    def _is_axis_aligned(x1: int, y1: int, x2: int, y2: int) -> bool:
-        dx = abs(x2 - x1)
-        dy = abs(y2 - y1)
-        if dx == 0 or dy == 0:
-            return True
-        return min(dx, dy) / max(dx, dy) <= 0.15
-
-    @staticmethod
-    def _classify_boundary_line(
-        x1: int,
-        y1: int,
-        x2: int,
-        y2: int,
-        walkable_mask: cv2.typing.MatLike,
-        blocked_mask: cv2.typing.MatLike,
-    ) -> str | None:
-        orientation = "h" if abs(x2 - x1) >= abs(y2 - y1) else "v"
-        side_a = StructureDetector._classify_line_side(
-            x1,
-            y1,
-            x2,
-            y2,
-            orientation,
-            offset=-6,
-            walkable_mask=walkable_mask,
-            blocked_mask=blocked_mask,
-        )
-        side_b = StructureDetector._classify_line_side(
-            x1,
-            y1,
-            x2,
-            y2,
-            orientation,
-            offset=6,
-            walkable_mask=walkable_mask,
-            blocked_mask=blocked_mask,
-        )
-        sides = {side_a, side_b}
-
-        if sides == {"walkable", "blocked"}:
-            return "wall_boundary"
-        if side_a == "blocked" and side_b == "blocked":
-            return "room_boundary"
-        return None
-
-    @staticmethod
-    def _classify_line_side(
-        x1: int,
-        y1: int,
-        x2: int,
-        y2: int,
-        orientation: str,
-        offset: int,
-        walkable_mask: cv2.typing.MatLike,
-        blocked_mask: cv2.typing.MatLike,
-    ) -> str | None:
-        probe = np.zeros_like(walkable_mask, dtype="uint8")
-        if orientation == "h":
-            start = (x1, y1 + offset)
-            end = (x2, y2 + offset)
-        else:
-            start = (x1 + offset, y1)
-            end = (x2 + offset, y2)
-
-        cv2.line(probe, start, end, 255, thickness=5)
-        probe_area = cv2.countNonZero(probe)
-        if probe_area == 0:
-            return None
-
-        walkable_ratio = (
-            cv2.countNonZero(cv2.bitwise_and(probe, walkable_mask)) / probe_area
-        )
-        blocked_ratio = (
-            cv2.countNonZero(cv2.bitwise_and(probe, blocked_mask)) / probe_area
-        )
-        if walkable_ratio >= 0.35:
-            return "walkable"
-        if blocked_ratio >= 0.35:
-            return "blocked"
-        return None
 
     def _build_walkable_masks(
         self,

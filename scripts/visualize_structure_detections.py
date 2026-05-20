@@ -22,9 +22,7 @@ COLORS = {
     "walkable_area": (0, 180, 0),
     "blocked_area": (0, 0, 255),
     "room_area": (0, 165, 255),
-    "floorplan_outline": (255, 0, 0),
-    "wall_boundary": (255, 0, 0),
-    "room_boundary": (255, 0, 255),
+    "wall_outline": (255, 0, 0),
 }
 
 MODE_LABELS = {
@@ -32,33 +30,25 @@ MODE_LABELS = {
         "walkable_area",
         "blocked_area",
         "room_area",
-        "floorplan_outline",
-        "wall_boundary",
-        "room_boundary",
+        "wall_outline",
     },
     "areas": {"walkable_area", "blocked_area"},
     "rooms": {"room_area"},
-    "outline": {"floorplan_outline"},
-    "wall": {"wall_boundary"},
-    "room": {"room_boundary"},
+    "outline": {"wall_outline"},
 }
 
 LEGEND_ITEMS = {
     "walkable_area": "walkable_area: movable corridor",
     "blocked_area": "blocked_area: non-walkable room/store",
     "room_area": "room_area: individual room/store",
-    "floorplan_outline": "floorplan_outline: outer map boundary",
-    "wall_boundary": "wall_boundary: corridor-blocked boundary",
-    "room_boundary": "room_boundary: room/store separator",
+    "wall_outline": "wall_outline: outer map boundary",
 }
 
 LABEL_ORDER = (
     "walkable_area",
     "blocked_area",
     "room_area",
-    "floorplan_outline",
-    "wall_boundary",
-    "room_boundary",
+    "wall_outline",
 )
 
 
@@ -92,7 +82,7 @@ def main() -> None:
     if args.split:
         output_stem = output_path.with_suffix("") if output_path.suffix else output_path
         output_stem.parent.mkdir(parents=True, exist_ok=True)
-        for mode in ("areas", "rooms", "outline", "wall", "room", "all"):
+        for mode in ("areas", "rooms", "outline", "all"):
             mode_output = output_stem.with_name(f"{output_stem.name}_{mode}.png")
             _write_preview(image, detections, mode, mode_output)
         _print_summary(detections, output_stem)
@@ -123,7 +113,7 @@ def _write_preview(
 
         if detection.geom_px.get("type") == "Polygon":
             polygon = np.array(coordinates[0], dtype=np.int32)
-            if detection.label == "floorplan_outline":
+            if detection.label == "wall_outline":
                 cv2.polylines(canvas, [polygon], isClosed=True, color=color, thickness=6)
             else:
                 cv2.fillPoly(overlay, [polygon], color)
@@ -179,15 +169,12 @@ def _print_summary(detections: list, output_path: Path) -> None:
     walkable_count = sum(1 for d in detections if d.label == "walkable_area")
     blocked_count = sum(1 for d in detections if d.label == "blocked_area")
     room_area_count = sum(1 for d in detections if d.label == "room_area")
-    outline_count = sum(1 for d in detections if d.label == "floorplan_outline")
-    wall_count = sum(1 for d in detections if d.label == "wall_boundary")
-    room_count = sum(1 for d in detections if d.label == "room_boundary")
+    outline_count = sum(1 for d in detections if d.label == "wall_outline")
     print(
         f"Saved {len(detections)} detections "
         f"({walkable_count} walkable, {blocked_count} blocked, "
         f"{room_area_count} room areas, "
-        f"{outline_count} outlines, "
-        f"{wall_count} wall boundaries, {room_count} room boundaries) "
+        f"{outline_count} outlines) "
         f"to {output_path}"
     )
 
