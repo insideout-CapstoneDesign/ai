@@ -112,6 +112,8 @@ def _write_preview(
             continue
 
         if detection.geom_px.get("type") == "Polygon":
+            if not coordinates[0] or len(coordinates[0]) < 3:
+                continue
             polygon = np.array(coordinates[0], dtype=np.int32)
             if detection.label == "wall_outline":
                 cv2.polylines(canvas, [polygon], isClosed=True, color=color, thickness=6)
@@ -119,6 +121,8 @@ def _write_preview(
                 cv2.fillPoly(overlay, [polygon], color)
                 cv2.polylines(canvas, [polygon], isClosed=True, color=color, thickness=2)
         elif detection.geom_px.get("type") == "LineString":
+            if len(coordinates) < 2:
+                continue
             line = np.array(coordinates, dtype=np.int32)
             cv2.polylines(canvas, [line], isClosed=False, color=color, thickness=4)
 
