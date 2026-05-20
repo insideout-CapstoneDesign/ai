@@ -162,15 +162,17 @@ class StructureDetector(Detector):
         filled = mask.copy()
         flood_mask = np.zeros((height + 2, width + 2), dtype="uint8")
 
-        seeds = [
-            (0, 0),
-            (width - 1, 0),
-            (0, height - 1),
-            (width - 1, height - 1),
-        ]
-        for seed in seeds:
-            if filled[seed[1], seed[0]] == 255:
-                cv2.floodFill(filled, flood_mask, seed, 128)
+        for x in range(width):
+            if filled[0, x] == 255:
+                cv2.floodFill(filled, flood_mask, (x, 0), 128)
+            if filled[height - 1, x] == 255:
+                cv2.floodFill(filled, flood_mask, (x, height - 1), 128)
+
+        for y in range(height):
+            if filled[y, 0] == 255:
+                cv2.floodFill(filled, flood_mask, (0, y), 128)
+            if filled[y, width - 1] == 255:
+                cv2.floodFill(filled, flood_mask, (width - 1, y), 128)
 
         return (filled == 128).astype("uint8") * 255
 
