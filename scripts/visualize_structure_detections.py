@@ -67,7 +67,9 @@ def main() -> None:
 
     blended = cv2.addWeighted(overlay, 0.28, image, 0.72, 0)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    cv2.imwrite(str(output_path), blended)
+    saved = cv2.imwrite(str(output_path), blended)
+    if not saved:
+        raise IOError(f"Failed to write output image: {output_path}")
 
     walkable_count = sum(1 for d in detections if d.label == "walkable_area")
     blocked_count = sum(1 for d in detections if d.label == "blocked_area")
