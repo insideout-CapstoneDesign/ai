@@ -23,6 +23,7 @@ from app.schemas.analyze import (
 from app.services.text_detector import TextDetector
 from app.services.object_detector import ObjectDetector
 from app.services.poi_detector import PoiDetector
+from app.services.structure_detector import StructureDetector
 from app.services.graph_detector import GraphDetector
 
 logger = logging.getLogger(__name__)
@@ -38,6 +39,7 @@ router = APIRouter(
 text_detector = TextDetector()
 object_detector = ObjectDetector()
 poi_detector = PoiDetector()
+structure_detector = StructureDetector()
 graph_detector = GraphDetector()
 
 
@@ -97,9 +99,15 @@ def analyze_floorplan(request: AnalyzeRequest) -> AnalyzeResponse:
         )
 
         # 4) 노드·엣지 추출 (오브젝트 결과 활용)
+        structures = structure_detector.detect(
+            local_path,
+            text_detections=texts,
+            object_detections=objects,
+        )
+
         graph = graph_detector.detect(local_path, object_detections=objects) #
 
-        all_detections = texts + objects + pois + graph
+        all_detections = texts + objects + pois + structures + graph
 
         elapsed_ms = int((time.time() - start_time) * 1000)
 

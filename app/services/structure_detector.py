@@ -34,10 +34,18 @@ class StructureDetector(Detector):
     CONTENT_MIN_AREA_RATIO = 0.001
     CONTENT_PADDING_PX = 20
     MIN_AREA_RATIO = 0.0005
+    ROOM_AREA_MIN_RATIO = 0.00008
+    ROOM_AREA_MIN_WIDTH_PX = 24
+    ROOM_AREA_MIN_HEIGHT_PX = 24
     ENCLOSED_BLOCKED_MIN_AREA_RATIO = 0.0002
     APPROX_EPSILON_RATIO = 0.003
 
-    def detect(self, image_path: str) -> List[Detection]:
+    def detect(
+        self,
+        image_path: str,
+        text_detections: list[Detection] | None = None,
+        object_detections: list[Detection] | None = None,
+    ) -> List[Detection]:
         image = cv2.imread(image_path, cv2.IMREAD_COLOR)
         if image is None:
             raise FileNotFoundError(f"Image file not found or unreadable: {image_path}")
@@ -48,11 +56,23 @@ class StructureDetector(Detector):
 
         content_mask = self._build_content_extent_mask(gray)
         walkable_mask, enclosed_blocked_mask = self._build_walkable_masks(gray)
-        blocked_mask = cv2.bitwise_and(
+        base_blocked_mask = cv2.bitwise_and(
             self._build_blocked_mask(gray),
             content_mask,
         )
-        blocked_mask = cv2.bitwise_or(blocked_mask, enclosed_blocked_mask)
+        blocked_mask = cv2.bitwise_or(base_blocked_mask, enclosed_blocked_mask)
+        room_area_detections = self._detect_room_areas(
+            gray,
+            content_mask,
+            enclosed_blocked_mask,
+            text_detections or [],
+            object_detections or [],
+            min_area=max(120.0, image_area * self.ROOM_AREA_MIN_RATIO),
+        )
+        outline_detections = self._detect_wall_outline(
+            gray,
+            content_mask,
+        )
 
         detections = []
         detections.extend(
@@ -73,6 +93,8 @@ class StructureDetector(Detector):
                 min_area=min_area,
             )
         )
+        detections.extend(room_area_detections)
+        detections.extend(outline_detections)
 
         logger.info(
             "Detected %d structure areas from %s",
@@ -80,6 +102,181 @@ class StructureDetector(Detector):
             image_path,
         )
         return detections
+
+    def _detect_wall_outline(
+        self,
+        gray: cv2.typing.MatLike,
+        content_mask: cv2.typing.MatLike,
+    ) -> list[Detection]:
+        floorplan_mask = self._build_wall_outline_mask(gray, content_mask)
+        contours, _ = cv2.findContours(
+            floorplan_mask,
+            cv2.RETR_EXTERNAL,
+            cv2.CHAIN_APPROX_SIMPLE,
+        )
+        if not contours:
+            return []
+
+        contour = max(contours, key=cv2.contourArea)
+        polygon = self._contour_to_outline_polygon(contour)
+        if len(polygon) < 4:
+            return []
+
+        x, y, width, height = cv2.boundingRect(contour)
+        return [
+            Detection(
+                detect_type="wall",
+                confidence=0.72,
+                geom_px={
+                    "type": "Polygon",
+                    "coordinates": [polygon],
+                },
+                bbox_px=[
+                    float(x),
+                    float(y),
+                    float(width),
+                    float(height),
+                ],
+                label="wall_outline",
+            )
+        ]
+
+    def _build_wall_outline_mask(
+        self,
+        gray: cv2.typing.MatLike,
+        content_mask: cv2.typing.MatLike,
+    ) -> cv2.typing.MatLike:
+        white_mask = (gray >= self.WALKABLE_THRESHOLD).astype("uint8") * 255
+        wall_mask = (gray < self.WALL_LINE_THRESHOLD).astype("uint8") * 255
+        wall_kernel = cv2.getStructuringElement(
+            cv2.MORPH_RECT,
+            (self.WALL_DILATE_KERNEL_SIZE, self.WALL_DILATE_KERNEL_SIZE),
+        )
+        wall_mask = cv2.dilate(wall_mask, wall_kernel, iterations=1)
+        open_background = cv2.bitwise_and(white_mask, cv2.bitwise_not(wall_mask))
+        outside_background = self._flood_fill_border(open_background)
+
+        floorplan_mask = cv2.bitwise_and(
+            cv2.bitwise_not(outside_background),
+            content_mask,
+        )
+        close_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (9, 9))
+        floorplan_mask = cv2.morphologyEx(
+            floorplan_mask,
+            cv2.MORPH_CLOSE,
+            close_kernel,
+            iterations=2,
+        )
+        return self._keep_largest_component(floorplan_mask)
+
+    @staticmethod
+    def _contour_to_outline_polygon(
+        contour: cv2.typing.MatLike,
+    ) -> list[list[float]]:
+        perimeter = cv2.arcLength(contour, closed=True)
+        approx = cv2.approxPolyDP(
+            contour,
+            epsilon=max(3.0, perimeter * 0.004),
+            closed=True,
+        )
+        polygon = [
+            [float(point[0][0]), float(point[0][1])]
+            for point in approx
+        ]
+        if polygon and polygon[0] != polygon[-1]:
+            polygon.append(polygon[0])
+        return polygon
+
+    def _detect_room_areas(
+        self,
+        gray: cv2.typing.MatLike,
+        content_mask: cv2.typing.MatLike,
+        enclosed_blocked_mask: cv2.typing.MatLike,
+        text_detections: list[Detection],
+        object_detections: list[Detection],
+        min_area: float,
+    ) -> list[Detection]:
+        room_mask = cv2.bitwise_and(
+            self._build_room_area_mask(gray),
+            content_mask,
+        )
+        room_mask = cv2.bitwise_or(room_mask, enclosed_blocked_mask)
+        room_detections = self._mask_to_detections(
+            room_mask,
+            detect_type="room",
+            label="room_area",
+            confidence=0.68,
+            min_area=min_area,
+        )
+        for room in room_detections:
+            room.ocr_text = self._match_room_label(
+                room,
+                text_detections,
+                object_detections,
+            )
+        return [
+            room
+            for room in room_detections
+            if self._is_room_sized_detection(room)
+        ]
+
+    def _build_room_area_mask(self, gray: cv2.typing.MatLike) -> cv2.typing.MatLike:
+        mask = (
+            (gray >= self.BLOCKED_MIN_THRESHOLD)
+            & (gray <= self.BLOCKED_MAX_THRESHOLD)
+        ).astype("uint8") * 255
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+        return cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+
+    def _is_room_sized_detection(self, detection: Detection) -> bool:
+        if not detection.bbox_px:
+            return False
+
+        _, _, width, height = detection.bbox_px
+        return (
+            width >= self.ROOM_AREA_MIN_WIDTH_PX
+            and height >= self.ROOM_AREA_MIN_HEIGHT_PX
+        )
+
+    @staticmethod
+    def _match_room_label(
+        room: Detection,
+        text_detections: list[Detection],
+        object_detections: list[Detection],
+    ) -> str | None:
+        texts = [
+            detection.ocr_text
+            for detection in text_detections
+            if detection.ocr_text
+            and StructureDetector._detection_center_in_detection(detection, room)
+        ]
+        if texts:
+            return " ".join(texts)
+
+        for detection in object_detections:
+            if detection.label and StructureDetector._detection_center_in_detection(
+                detection,
+                room,
+            ):
+                return detection.label
+        return None
+
+    @staticmethod
+    def _detection_center_in_detection(
+        child: Detection,
+        parent: Detection,
+    ) -> bool:
+        if not child.bbox_px or not parent.bbox_px:
+            return False
+
+        child_x, child_y, child_width, child_height = child.bbox_px
+        parent_x, parent_y, parent_width, parent_height = parent.bbox_px
+        center_x = child_x + child_width / 2
+        center_y = child_y + child_height / 2
+        return (
+            parent_x <= center_x <= parent_x + parent_width
+            and parent_y <= center_y <= parent_y + parent_height
+        )
 
     def _build_walkable_masks(
         self,
