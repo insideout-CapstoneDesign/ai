@@ -13,6 +13,7 @@ from typing import Iterable, List
 
 import cv2
 import numpy as np
+from skimage.morphology import skeletonize as skimage_skeletonize
 
 from app.schemas.analyze import Detection
 from app.services.base import Detector
@@ -104,6 +105,10 @@ class GraphDetector(Detector):
     def _skeletonize(self, mask: cv2.typing.MatLike) -> cv2.typing.MatLike:
         if hasattr(cv2, "ximgproc") and hasattr(cv2.ximgproc, "thinning"):
             return cv2.ximgproc.thinning(mask)
+
+        skeleton = skimage_skeletonize(mask > 0)
+        if skeleton.any():
+            return skeleton.astype("uint8") * 255
 
         return self._zhang_suen_thinning(mask)
 
