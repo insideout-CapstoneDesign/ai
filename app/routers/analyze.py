@@ -105,7 +105,11 @@ def analyze_floorplan(request: AnalyzeRequest) -> AnalyzeResponse:
             object_detections=objects,
         )
 
-        graph = graph_detector.detect(local_path, object_detections=objects) #
+        graph = graph_detector.detect(
+            local_path,
+            object_detections=objects,
+            structure_detections=structures,
+        )
 
         all_detections = texts + objects + pois + structures + graph
 
