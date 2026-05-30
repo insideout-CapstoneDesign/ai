@@ -109,6 +109,7 @@ def analyze_floorplan(request: AnalyzeRequest) -> AnalyzeResponse:
             local_path,
             object_detections=objects,
             structure_detections=structures,
+            poi_detections=pois,
         )
 
         all_detections = texts + objects + pois + structures + graph
