@@ -10,14 +10,20 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+from PIL import Image, ImageDraw, ImageFont
 
 
 COLORS = {
     "walkable_area": (170, 235, 170),
     "blocked_area": (190, 190, 230),
     "room_area": (80, 190, 255),
-    "wall_outline": (255, 0, 0),
+    "wall_outline": (80, 80, 80),
     "poi_candidate": (190, 70, 190),
+    "centerline_walkway": (255, 0, 0),
+    "poi_access_link": (255, 0, 255),
+    "center_node": (0, 0, 255),
+    "center_connector": (255, 255, 0),
+    "poi_access_node": (255, 0, 255),
 }
 
 DRAW_ORDER = (
@@ -25,6 +31,11 @@ DRAW_ORDER = (
     "blocked_area",
     "room_area",
     "wall_outline",
+    "centerline_walkway",
+    "poi_access_link",
+    "center_node",
+    "center_connector",
+    "poi_access_node",
     "poi_candidate",
 )
 
@@ -55,6 +66,7 @@ def main() -> None:
             _draw_detection(canvas, overlay, detection, COLORS[label])
 
     blended = cv2.addWeighted(overlay, 0.32, canvas, 0.68, 0)
+    blended = _draw_text_labels(blended, detections)
     _draw_legend(blended)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -123,7 +135,91 @@ def _draw_detection(
 def _matches_layer(detection: dict, layer: str) -> bool:
     if layer == "poi_candidate":
         return detection.get("detect_type") == "poi_candidate"
+    if layer == "centerline_walkway":
+        return detection.get("label") == "centerline_walkway"
+    if layer == "poi_access_link":
+        return (detection.get("label") or "").startswith("poi_access_link")
+    if layer == "center_node":
+        return (
+            detection.get("detect_type") == "node_candidate"
+            and detection.get("label") in {
+                "center_junction",
+                "center_endpoint",
+                "center_turn",
+            }
+        )
+    if layer == "center_connector":
+        return detection.get("label") == "center_connector"
+    if layer == "poi_access_node":
+        return (detection.get("label") or "").startswith("poi_access_node")
     return detection.get("label") == layer
+
+
+def _draw_text_labels(
+    image: cv2.typing.MatLike,
+    detections: list[dict],
+) -> cv2.typing.MatLike:
+    pil_image = Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+    draw = ImageDraw.Draw(pil_image)
+    font = _load_font(15)
+    small_font = _load_font(12)
+
+    for detection in detections:
+        if detection.get("label") == "room_area" and detection.get("ocr_text"):
+            _draw_centered_text(draw, detection, detection["ocr_text"], font, (35, 35, 35))
+
+    for detection in detections:
+        if detection.get("detect_type") != "poi_candidate":
+            continue
+        if detection.get("label") == "store.unknown":
+            continue
+        geom = detection.get("geom_px", {})
+        coordinates = geom.get("coordinates")
+        if geom.get("type") != "Point" or not coordinates:
+            continue
+        text = detection.get("ocr_text") or detection.get("label")
+        if not text:
+            continue
+        x, y = int(coordinates[0]), int(coordinates[1])
+        draw.text((x + 10, y - 8), str(text), font=small_font, fill=(80, 20, 80))
+
+    return cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+
+
+def _draw_centered_text(
+    draw: ImageDraw.ImageDraw,
+    detection: dict,
+    text: str,
+    font: ImageFont.ImageFont,
+    color: tuple[int, int, int],
+) -> None:
+    bbox = detection.get("bbox_px")
+    if not bbox:
+        return
+    x, y, width, height = bbox
+    text_box = draw.textbbox((0, 0), text, font=font)
+    text_width = text_box[2] - text_box[0]
+    text_height = text_box[3] - text_box[1]
+    draw.text(
+        (
+            x + (width - text_width) / 2,
+            y + (height - text_height) / 2,
+        ),
+        text,
+        font=font,
+        fill=color,
+    )
+
+
+def _load_font(size: int) -> ImageFont.ImageFont:
+    font_paths = (
+        "C:/Windows/Fonts/malgun.ttf",
+        "C:/Windows/Fonts/arial.ttf",
+    )
+    for font_path in font_paths:
+        if Path(font_path).exists():
+            return ImageFont.truetype(font_path, size)
+    return ImageFont.load_default()
 
 
 def _draw_legend(image: cv2.typing.MatLike) -> None:

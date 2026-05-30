@@ -27,6 +27,7 @@ class GraphNode:
     x: float
     y: float
     label: str
+    ocr_text: str | None = None
 
 
 @dataclass(frozen=True)
@@ -36,6 +37,7 @@ class GraphEdge:
     start_id: int
     end_id: int
     path: list[list[float]]
+    label: str = "centerline_walkway"
 
 
 class GraphDetector(Detector):
@@ -46,6 +48,8 @@ class GraphDetector(Detector):
 
     NODE_CONFIDENCE = 0.72
     EDGE_CONFIDENCE = 0.70
+    POI_ACCESS_CONFIDENCE = 0.70
+    CONNECTOR_MERGE_DISTANCE_PX = 3.0
     MIN_EDGE_LENGTH_PX = 18.0
     TURN_ANGLE_DEGREES = 80.0
     PATH_SAMPLE_STEP_PX = 6
@@ -55,6 +59,7 @@ class GraphDetector(Detector):
         image_path: str,
         object_detections: List[Detection] | None = None,
         structure_detections: List[Detection] | None = None,
+        poi_detections: List[Detection] | None = None,
     ) -> List[Detection]:
         image = cv2.imread(image_path, cv2.IMREAD_COLOR)
         if image is None:
@@ -71,6 +76,12 @@ class GraphDetector(Detector):
         raw_nodes, raw_node_map = self._extract_raw_nodes(skeleton)
         raw_paths = self._trace_raw_paths(skeleton, raw_nodes, raw_node_map)
         nodes, edges = self._split_paths_into_center_graph(raw_nodes, raw_paths)
+        nodes, edges = self._connect_poi_access_nodes(
+            walkable_mask,
+            nodes,
+            edges,
+            poi_detections or [],
+        )
 
         return self._to_detections(nodes, edges)
 
@@ -351,7 +362,7 @@ class GraphDetector(Detector):
             )
 
         edges: list[GraphEdge] = []
-        seen_edges: set[tuple[int, int, int, int]] = set()
+        seen_edges: set[tuple[int, int, int, int, int, int]] = set()
         for start_raw_id, end_raw_id, path_pixels in raw_paths:
             start_raw = raw_node_lookup[start_raw_id]
             end_raw = raw_node_lookup[end_raw_id]
@@ -486,6 +497,7 @@ class GraphDetector(Detector):
                 x=node.x,
                 y=node.y,
                 label=node.label,
+                ocr_text=node.ocr_text,
             )
             for node in connected_nodes
         ]
@@ -494,11 +506,255 @@ class GraphDetector(Detector):
                 start_id=id_map[edge.start_id],
                 end_id=id_map[edge.end_id],
                 path=edge.path,
+                label=edge.label,
             )
             for edge in edges
             if edge.start_id in id_map and edge.end_id in id_map
         ]
         return renumbered_nodes, renumbered_edges
+
+    def _connect_poi_access_nodes(
+        self,
+        walkable_mask: cv2.typing.MatLike,
+        nodes: list[GraphNode],
+        edges: list[GraphEdge],
+        poi_detections: list[Detection],
+    ) -> tuple[list[GraphNode], list[GraphEdge]]:
+        if not edges or not poi_detections:
+            return nodes, edges
+
+        boundary_points = self._walkable_boundary_points(walkable_mask)
+        if len(boundary_points) == 0:
+            return nodes, edges
+
+        for poi in poi_detections:
+            poi_point = self._point_coordinates(poi)
+            if poi.detect_type != "poi_candidate" or poi_point is None:
+                continue
+
+            access_point = self._nearest_walkable_point(
+                walkable_mask,
+                boundary_points,
+                poi_point,
+            )
+            edge_index, connector_point, segment_index = self._nearest_edge_projection(
+                walkable_mask,
+                edges,
+                access_point,
+            )
+            if edge_index is None or connector_point is None or segment_index is None:
+                continue
+
+            connector_id, edges = self._split_edge_at_connector(
+                nodes,
+                edges,
+                edge_index,
+                connector_point,
+                segment_index,
+            )
+            access_id = self._add_graph_node(
+                nodes,
+                access_point,
+                label=f"poi_access_node:{poi.label or 'unknown'}",
+                ocr_text=poi.ocr_text,
+            )
+            if access_id == connector_id:
+                continue
+
+            edges.append(
+                GraphEdge(
+                    start_id=access_id,
+                    end_id=connector_id,
+                    path=[access_point, connector_point],
+                    label=f"poi_access_link:{poi.label or 'unknown'}",
+                )
+            )
+
+        return self._renumber_connected_graph(nodes, edges)
+
+    @staticmethod
+    def _walkable_boundary_points(
+        walkable_mask: cv2.typing.MatLike,
+    ) -> cv2.typing.MatLike:
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+        eroded = cv2.erode(walkable_mask, kernel)
+        boundary = cv2.subtract(walkable_mask, eroded)
+        points = cv2.findNonZero(boundary)
+        if points is None:
+            return np.empty((0, 2), dtype=np.float32)
+        return points.reshape((-1, 2)).astype(np.float32)
+
+    @staticmethod
+    def _nearest_walkable_point(
+        walkable_mask: cv2.typing.MatLike,
+        boundary_points: cv2.typing.MatLike,
+        poi_point: list[float],
+    ) -> list[float]:
+        x = int(round(poi_point[0]))
+        y = int(round(poi_point[1]))
+        height, width = walkable_mask.shape[:2]
+        if 0 <= x < width and 0 <= y < height and walkable_mask[y, x] > 0:
+            return [float(x), float(y)]
+
+        distances = (
+            (boundary_points[:, 0] - poi_point[0]) ** 2
+            + (boundary_points[:, 1] - poi_point[1]) ** 2
+        )
+        nearest = boundary_points[int(np.argmin(distances))]
+        return [float(nearest[0]), float(nearest[1])]
+
+    def _nearest_edge_projection(
+        self,
+        walkable_mask: cv2.typing.MatLike,
+        edges: list[GraphEdge],
+        point: list[float],
+    ) -> tuple[int | None, list[float] | None, int | None]:
+        nearest: tuple[float, int, list[float], int] | None = None
+
+        for edge_index, edge in enumerate(edges):
+            if edge.label.startswith("poi_access_link"):
+                continue
+
+            for segment_index, (start, end) in enumerate(zip(edge.path, edge.path[1:])):
+                projection = self._project_point_to_segment(point, start, end)
+                if not self._line_is_walkable(walkable_mask, point, projection):
+                    continue
+
+                distance = math.dist(point, projection)
+                if nearest is None or distance < nearest[0]:
+                    nearest = (distance, edge_index, projection, segment_index)
+
+        if nearest is None:
+            return None, None, None
+        return nearest[1], nearest[2], nearest[3]
+
+    @staticmethod
+    def _line_is_walkable(
+        walkable_mask: cv2.typing.MatLike,
+        start: list[float],
+        end: list[float],
+    ) -> bool:
+        line_mask = np.zeros_like(walkable_mask, dtype="uint8")
+        cv2.line(
+            line_mask,
+            (int(round(start[0])), int(round(start[1]))),
+            (int(round(end[0])), int(round(end[1]))),
+            255,
+            thickness=1,
+        )
+        line_pixels = line_mask > 0
+        return bool(line_pixels.any() and (walkable_mask[line_pixels] > 0).all())
+
+    @staticmethod
+    def _project_point_to_segment(
+        point: list[float],
+        start: list[float],
+        end: list[float],
+    ) -> list[float]:
+        dx = end[0] - start[0]
+        dy = end[1] - start[1]
+        length_squared = dx * dx + dy * dy
+        if length_squared == 0.0:
+            return [float(start[0]), float(start[1])]
+
+        ratio = (
+            ((point[0] - start[0]) * dx + (point[1] - start[1]) * dy)
+            / length_squared
+        )
+        ratio = max(0.0, min(1.0, ratio))
+        return [
+            float(start[0] + ratio * dx),
+            float(start[1] + ratio * dy),
+        ]
+
+    def _split_edge_at_connector(
+        self,
+        nodes: list[GraphNode],
+        edges: list[GraphEdge],
+        edge_index: int,
+        connector_point: list[float],
+        segment_index: int,
+    ) -> tuple[int, list[GraphEdge]]:
+        edge = edges[edge_index]
+        start_node = self._node_by_id(nodes, edge.start_id)
+        end_node = self._node_by_id(nodes, edge.end_id)
+
+        if math.dist([start_node.x, start_node.y], connector_point) <= self.CONNECTOR_MERGE_DISTANCE_PX:
+            return start_node.node_id, edges
+        if math.dist([end_node.x, end_node.y], connector_point) <= self.CONNECTOR_MERGE_DISTANCE_PX:
+            return end_node.node_id, edges
+
+        connector_id = self._add_graph_node(nodes, connector_point, "center_connector")
+        left_path = [
+            *edge.path[:segment_index + 1],
+            connector_point,
+        ]
+        right_path = [
+            connector_point,
+            *edge.path[segment_index + 1:],
+        ]
+        replacement_edges = [
+            GraphEdge(
+                start_id=edge.start_id,
+                end_id=connector_id,
+                path=left_path,
+                label=edge.label,
+            ),
+            GraphEdge(
+                start_id=connector_id,
+                end_id=edge.end_id,
+                path=right_path,
+                label=edge.label,
+            ),
+        ]
+        return connector_id, [
+            *edges[:edge_index],
+            *replacement_edges,
+            *edges[edge_index + 1:],
+        ]
+
+    @staticmethod
+    def _node_by_id(nodes: list[GraphNode], node_id: int) -> GraphNode:
+        for node in nodes:
+            if node.node_id == node_id:
+                return node
+        raise ValueError(f"Graph node not found: {node_id}")
+
+    def _add_graph_node(
+        self,
+        nodes: list[GraphNode],
+        point: list[float],
+        label: str,
+        ocr_text: str | None = None,
+    ) -> int:
+        for node in nodes:
+            if (
+                node.label == label
+                and math.dist([node.x, node.y], point) <= self.CONNECTOR_MERGE_DISTANCE_PX
+            ):
+                return node.node_id
+
+        node_id = max((node.node_id for node in nodes), default=0) + 1
+        nodes.append(
+            GraphNode(
+                node_id=node_id,
+                x=float(point[0]),
+                y=float(point[1]),
+                label=label,
+                ocr_text=ocr_text,
+            )
+        )
+        return node_id
+
+    @staticmethod
+    def _point_coordinates(detection: Detection) -> list[float] | None:
+        if detection.geom_px.get("type") != "Point":
+            return None
+
+        coordinates = detection.geom_px.get("coordinates")
+        if not isinstance(coordinates, list) or len(coordinates) < 2:
+            return None
+        return [float(coordinates[0]), float(coordinates[1])]
 
     def _to_detections(
         self,
@@ -518,6 +774,7 @@ class GraphDetector(Detector):
                     },
                     bbox_px=[node.x - 3, node.y - 3, 6, 6],
                     label=node.label,
+                    ocr_text=node.ocr_text,
                 )
             )
 
@@ -538,7 +795,7 @@ class GraphDetector(Detector):
                         max(xs) - min(xs),
                         max(ys) - min(ys),
                     ],
-                    label="centerline_walkway",
+                    label=edge.label,
                 )
             )
 
