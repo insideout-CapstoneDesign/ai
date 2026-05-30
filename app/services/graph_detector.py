@@ -561,16 +561,28 @@ class GraphDetector(Detector):
             if access_id == connector_id:
                 continue
 
-            edges.append(
-                GraphEdge(
-                    start_id=access_id,
-                    end_id=connector_id,
-                    path=[access_point, connector_point],
-                    label=f"poi_access_link:{poi.label or 'unknown'}",
-                )
+            access_edge = GraphEdge(
+                start_id=access_id,
+                end_id=connector_id,
+                path=[access_point, connector_point],
+                label=f"poi_access_link:{poi.label or 'unknown'}",
             )
+            if not self._has_equivalent_edge(edges, access_edge):
+                edges.append(access_edge)
 
         return self._renumber_connected_graph(nodes, edges)
+
+    @staticmethod
+    def _has_equivalent_edge(
+        edges: list[GraphEdge],
+        candidate: GraphEdge,
+    ) -> bool:
+        candidate_nodes = {candidate.start_id, candidate.end_id}
+        return any(
+            edge.label == candidate.label
+            and {edge.start_id, edge.end_id} == candidate_nodes
+            for edge in edges
+        )
 
     @staticmethod
     def _walkable_boundary_points(
