@@ -215,6 +215,9 @@ def _load_font(size: int) -> ImageFont.ImageFont:
     font_paths = (
         "C:/Windows/Fonts/malgun.ttf",
         "C:/Windows/Fonts/arial.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/System/Library/Fonts/AppleSDGothicNeo.ttc",
     )
     for font_path in font_paths:
         if Path(font_path).exists():
