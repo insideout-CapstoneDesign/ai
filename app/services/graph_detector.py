@@ -646,16 +646,14 @@ class GraphDetector(Detector):
         start: list[float],
         end: list[float],
     ) -> bool:
-        line_mask = np.zeros_like(walkable_mask, dtype="uint8")
-        cv2.line(
-            line_mask,
-            (int(round(start[0])), int(round(start[1]))),
-            (int(round(end[0])), int(round(end[1]))),
-            255,
-            thickness=1,
-        )
-        line_pixels = line_mask > 0
-        return bool(line_pixels.any() and (walkable_mask[line_pixels] > 0).all())
+        x1, y1 = round(start[0]), round(start[1])
+        x2, y2 = round(end[0]), round(end[1])
+        steps = max(abs(x2 - x1), abs(y2 - y1)) + 1
+        xs = np.rint(np.linspace(x1, x2, steps)).astype(np.int32)
+        ys = np.rint(np.linspace(y1, y2, steps)).astype(np.int32)
+        xs = np.clip(xs, 0, walkable_mask.shape[1] - 1)
+        ys = np.clip(ys, 0, walkable_mask.shape[0] - 1)
+        return bool((walkable_mask[ys, xs] > 0).all())
 
     @staticmethod
     def _project_point_to_segment(
