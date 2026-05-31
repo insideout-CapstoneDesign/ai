@@ -28,6 +28,8 @@ class StructureDetector(Detector):
     WALKABLE_THRESHOLD = 245
     WALL_LINE_THRESHOLD = 150
     WALL_DILATE_KERNEL_SIZE = 7
+    OPENING_SEAL_KERNEL_SIZES = (31, 61, 91, 121, 151)
+    OPENING_SEAL_MIN_WALKABLE_RATIO = 0.05
     BLOCKED_MIN_THRESHOLD = 180
     BLOCKED_MAX_THRESHOLD = 244
     CONTENT_THRESHOLD = 245
@@ -154,7 +156,10 @@ class StructureDetector(Detector):
         )
         wall_mask = cv2.dilate(wall_mask, wall_kernel, iterations=1)
         open_background = cv2.bitwise_and(white_mask, cv2.bitwise_not(wall_mask))
-        outside_background = self._flood_fill_border(open_background)
+        outside_background = self._outside_background_mask(
+            open_background,
+            wall_mask,
+        )
 
         floorplan_mask = cv2.bitwise_and(
             cv2.bitwise_not(outside_background),
@@ -294,7 +299,10 @@ class StructureDetector(Detector):
             white_mask,
             cv2.bitwise_not(wall_mask),
         )
-        outside_mask = self._flood_fill_border(candidate_mask)
+        outside_mask = self._outside_background_mask(
+            candidate_mask,
+            wall_mask,
+        )
         internal_mask = cv2.bitwise_and(
             candidate_mask,
             cv2.bitwise_not(outside_mask),
@@ -307,6 +315,77 @@ class StructureDetector(Detector):
             ),
         )
         return self._clean_mask(walkable_mask), self._clean_mask(enclosed_blocked_mask)
+
+    def _outside_background_mask(
+        self,
+        candidate_mask: cv2.typing.MatLike,
+        wall_mask: cv2.typing.MatLike,
+    ) -> cv2.typing.MatLike:
+        outside_mask = self._flood_fill_border(candidate_mask)
+        internal_mask = cv2.bitwise_and(
+            candidate_mask,
+            cv2.bitwise_not(outside_mask),
+        )
+        if self._largest_component_area(internal_mask) >= self._minimum_walkable_area(
+            candidate_mask,
+        ):
+            return outside_mask
+
+        for kernel_size in self.OPENING_SEAL_KERNEL_SIZES:
+            sealed_wall_mask = self._seal_wall_openings(wall_mask, kernel_size)
+            sealed_candidate_mask = cv2.bitwise_and(
+                candidate_mask,
+                cv2.bitwise_not(sealed_wall_mask),
+            )
+            sealed_outside_mask = self._flood_fill_border(sealed_candidate_mask)
+            restored_internal_mask = cv2.bitwise_and(
+                candidate_mask,
+                cv2.bitwise_not(sealed_outside_mask),
+            )
+            if self._largest_component_area(
+                restored_internal_mask,
+            ) >= self._minimum_walkable_area(candidate_mask):
+                return sealed_outside_mask
+
+        return outside_mask
+
+    @staticmethod
+    def _seal_wall_openings(
+        wall_mask: cv2.typing.MatLike,
+        kernel_size: int,
+    ) -> cv2.typing.MatLike:
+        horizontal_kernel = cv2.getStructuringElement(
+            cv2.MORPH_RECT,
+            (kernel_size, 1),
+        )
+        vertical_kernel = cv2.getStructuringElement(
+            cv2.MORPH_RECT,
+            (1, kernel_size),
+        )
+        horizontal_walls = cv2.morphologyEx(
+            wall_mask,
+            cv2.MORPH_CLOSE,
+            horizontal_kernel,
+        )
+        vertical_walls = cv2.morphologyEx(
+            wall_mask,
+            cv2.MORPH_CLOSE,
+            vertical_kernel,
+        )
+        return cv2.bitwise_or(horizontal_walls, vertical_walls)
+
+    def _minimum_walkable_area(self, mask: cv2.typing.MatLike) -> float:
+        return mask.shape[0] * mask.shape[1] * self.OPENING_SEAL_MIN_WALKABLE_RATIO
+
+    @staticmethod
+    def _largest_component_area(mask: cv2.typing.MatLike) -> int:
+        count, _, stats, _ = cv2.connectedComponentsWithStats(mask)
+        if count <= 1:
+            return 0
+        return max(
+            stats[index, cv2.CC_STAT_AREA]
+            for index in range(1, count)
+        )
 
     def _build_blocked_mask(self, gray: cv2.typing.MatLike) -> cv2.typing.MatLike:
         mask = (
