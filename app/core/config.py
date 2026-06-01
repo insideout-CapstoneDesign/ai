@@ -130,9 +130,17 @@ class Settings(BaseSettings):
         default="ko",
         description="OCR 인식 언어 (ko/en)",
     )
+    ocr_engine: Literal["easyocr", "paddleocr"] = Field(
+        default="paddleocr",
+        description="OCR engine used by TextDetector",
+    )
     ocr_gpu: bool = Field(
         default=False,
         description="EasyOCR GPU 사용 여부",
+    )
+    paddleocr_enable_mkldnn: bool = Field(
+        default=False,
+        description="Enable PaddleOCR oneDNN acceleration on CPU",
     )
     ocr_model_storage_dir: Optional[str] = Field(
         default=None,
