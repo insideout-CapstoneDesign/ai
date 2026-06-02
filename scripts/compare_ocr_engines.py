@@ -41,13 +41,22 @@ def main() -> None:
 
     summary = {}
     for engine in ("easyocr", "paddleocr"):
+        detector = TextDetector(engine=engine)
+        warmup_started_at = time.perf_counter()
+        detector.detect(
+            str(image_path),
+            object_detections=object_detections,
+        )
+        warmup_ms = int((time.perf_counter() - warmup_started_at) * 1000)
+
         started_at = time.perf_counter()
-        detections = TextDetector(engine=engine).detect(
+        detections = detector.detect(
             str(image_path),
             object_detections=object_detections,
         )
         elapsed_ms = int((time.perf_counter() - started_at) * 1000)
         summary[engine] = {
+            "warmup_time_ms": warmup_ms,
             "processing_time_ms": elapsed_ms,
             "text_count": len(detections),
             "texts": [
@@ -60,7 +69,10 @@ def main() -> None:
             ],
         }
         _write_preview(image_path, output_dir / f"{engine}.png", detections)
-        print(f"{engine}: {len(detections)} texts in {elapsed_ms} ms")
+        print(
+            f"{engine}: {len(detections)} texts in {elapsed_ms} ms "
+            f"(warm-up: {warmup_ms} ms)"
+        )
 
     summary_path = output_dir / "summary.json"
     summary_path.write_text(
