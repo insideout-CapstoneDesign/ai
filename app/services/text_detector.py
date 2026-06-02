@@ -21,6 +21,11 @@ class TextDetector(Detector):
         self.engine = engine or settings.ocr_engine
         if self.engine not in {"easyocr", "paddleocr"}:
             raise ValueError(f"Unsupported OCR engine: {self.engine}")
+        self._paddleocr_model_name = (
+            self._paddleocr_recognition_model()
+            if self.engine == "paddleocr"
+            else None
+        )
         self.version = (
             "paddleocr-3.6.0"
             if self.engine == "paddleocr"
@@ -136,7 +141,7 @@ class TextDetector(Detector):
 
             self._reader = PaddleOCR(
                 text_detection_model_name="PP-OCRv5_mobile_det",
-                text_recognition_model_name=self._paddleocr_recognition_model(),
+                text_recognition_model_name=self._paddleocr_model_name,
                 use_doc_orientation_classify=False,
                 use_doc_unwarping=False,
                 use_textline_orientation=False,
