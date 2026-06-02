@@ -136,7 +136,7 @@ class TextDetector(Detector):
 
             self._reader = PaddleOCR(
                 text_detection_model_name="PP-OCRv5_mobile_det",
-                text_recognition_model_name="korean_PP-OCRv5_mobile_rec",
+                text_recognition_model_name=self._paddleocr_recognition_model(),
                 use_doc_orientation_classify=False,
                 use_doc_unwarping=False,
                 use_textline_orientation=False,
@@ -156,6 +156,27 @@ class TextDetector(Detector):
         if "ko" in configured and "en" not in configured:
             configured.append("en")
         return configured
+
+    @staticmethod
+    def _paddleocr_recognition_model() -> str:
+        configured = [
+            lang.strip()
+            for lang in settings.ocr_language.split(",")
+            if lang.strip()
+        ]
+        if not configured:
+            configured = ["ko"]
+
+        model_names = {
+            "ko": "korean_PP-OCRv5_mobile_rec",
+            "en": "en_PP-OCRv5_mobile_rec",
+        }
+        if len(configured) != 1 or configured[0] not in model_names:
+            raise ValueError(
+                "PaddleOCR supports exactly one OCR_LANGUAGE value: 'ko' or 'en'. "
+                f"Received: {settings.ocr_language!r}"
+            )
+        return model_names[configured[0]]
 
     @staticmethod
     def _normalize_polygon(raw_bbox: Any) -> List[List[float]]:
