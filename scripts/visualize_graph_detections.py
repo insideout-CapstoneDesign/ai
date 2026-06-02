@@ -57,8 +57,15 @@ def main() -> None:
 
     structure_detector = StructureDetector()
     graph_detector = GraphDetector()
-    texts = TextDetector().detect(str(image_path)) if args.show_poi_access else []
     objects = ObjectDetector().detect(str(image_path)) if args.show_poi_access else []
+    texts = (
+        TextDetector().detect(
+            str(image_path),
+            object_detections=objects,
+        )
+        if args.show_poi_access
+        else []
+    )
     pois = (
         PoiDetector().detect(
             str(image_path),

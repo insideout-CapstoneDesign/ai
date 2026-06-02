@@ -48,13 +48,21 @@ def main() -> None:
     if image is None:
         raise FileNotFoundError(f"Image file not found or unreadable: {image_path}")
 
-    text_detections = TextDetector().detect(str(image_path))
     object_detections = ObjectDetector().detect(str(image_path))
+    text_detections = TextDetector().detect(
+        str(image_path),
+        object_detections=object_detections,
+    )
 
     font = load_font()
 
     for detection in text_detections:
-        draw_detection(image, detection, text="", font=font)
+        draw_detection(
+            image,
+            detection,
+            text=detection.ocr_text or "",
+            font=font,
+        )
 
     for detection in object_detections:
         label = detection.label or detection.detect_type

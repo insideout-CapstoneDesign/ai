@@ -18,6 +18,8 @@ COLORS = {
     "blocked_area": (190, 190, 230),
     "room_area": (80, 190, 255),
     "wall_outline": (80, 80, 80),
+    "text_detection": (40, 40, 40),
+    "object_detection": (0, 140, 255),
     "poi_candidate": (190, 70, 190),
     "centerline_walkway": (255, 0, 0),
     "poi_access_link": (255, 0, 255),
@@ -31,6 +33,8 @@ DRAW_ORDER = (
     "blocked_area",
     "room_area",
     "wall_outline",
+    "text_detection",
+    "object_detection",
     "centerline_walkway",
     "poi_access_link",
     "center_node",
@@ -38,6 +42,26 @@ DRAW_ORDER = (
     "poi_access_node",
     "poi_candidate",
 )
+
+OBJECT_DETECT_TYPES = {
+    "accessible_restroom",
+    "aed",
+    "atm",
+    "cafe",
+    "clothing_alteration",
+    "elevator",
+    "escalator",
+    "family_restroom",
+    "infodesk",
+    "phone_charging",
+    "restroom_female",
+    "restroom_male",
+    "shoe_repair",
+    "stair",
+    "storage_locker",
+    "subway_station",
+    "water_fountain",
+}
 
 
 def main() -> None:
@@ -66,7 +90,7 @@ def main() -> None:
             _draw_detection(canvas, overlay, detection, COLORS[label])
 
     blended = cv2.addWeighted(overlay, 0.32, canvas, 0.68, 0)
-    blended = _draw_text_labels(blended, detections)
+    blended = _draw_labels(blended, detections)
     _draw_legend(blended)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -133,6 +157,10 @@ def _draw_detection(
 
 
 def _matches_layer(detection: dict, layer: str) -> bool:
+    if layer == "text_detection":
+        return detection.get("detect_type") == "text"
+    if layer == "object_detection":
+        return detection.get("detect_type") in OBJECT_DETECT_TYPES
     if layer == "poi_candidate":
         return detection.get("detect_type") == "poi_candidate"
     if layer == "centerline_walkway":
@@ -155,7 +183,7 @@ def _matches_layer(detection: dict, layer: str) -> bool:
     return detection.get("label") == layer
 
 
-def _draw_text_labels(
+def _draw_labels(
     image: cv2.typing.MatLike,
     detections: list[dict],
 ) -> cv2.typing.MatLike:
@@ -163,6 +191,34 @@ def _draw_text_labels(
     draw = ImageDraw.Draw(pil_image)
     font = _load_font(15)
     small_font = _load_font(12)
+
+    for detection in detections:
+        if detection.get("detect_type") != "text" or not detection.get("ocr_text"):
+            continue
+        bbox = detection.get("bbox_px")
+        if not bbox:
+            continue
+        x, y, _, _ = bbox
+        draw.text(
+            (x, max(0, y - 15)),
+            str(detection["ocr_text"]),
+            font=small_font,
+            fill=(20, 20, 20),
+        )
+
+    for detection in detections:
+        if detection.get("detect_type") not in OBJECT_DETECT_TYPES:
+            continue
+        bbox = detection.get("bbox_px")
+        if not bbox:
+            continue
+        x, y, _, height = bbox
+        draw.text(
+            (x, y + height + 2),
+            str(detection.get("label") or detection.get("detect_type")),
+            font=small_font,
+            fill=(180, 80, 0),
+        )
 
     for detection in detections:
         if detection.get("label") == "room_area" and detection.get("ocr_text"):

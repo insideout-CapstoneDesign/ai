@@ -1,11 +1,7 @@
-"""
-텍스트(OCR) 추출 Detector.
-
-EasyOCR를 사용해 도면 이미지 안의 텍스트를 추출하고, 이후 POI 추출에서
-그대로 활용할 수 있도록 Detection 형태로 반환한다.
-"""
+"""OCR text detector for floorplan images."""
 
 import logging
+import os
 from pathlib import Path
 from typing import Any, List
 
@@ -17,58 +13,103 @@ logger = logging.getLogger(__name__)
 
 
 class TextDetector(Detector):
-    """EasyOCR를 사용해 도면의 텍스트 위치와 인식 문자열을 추출한다."""
+    """Extract floorplan text with the configured OCR engine."""
 
     name = "text"
-    version = "easyocr-1.7.2"
 
-    def __init__(self) -> None:
+    def __init__(self, engine: str | None = None) -> None:
+        self.engine = engine or settings.ocr_engine
+        if self.engine not in {"easyocr", "paddleocr"}:
+            raise ValueError(f"Unsupported OCR engine: {self.engine}")
+        self._paddleocr_model_name = (
+            self._paddleocr_recognition_model()
+            if self.engine == "paddleocr"
+            else None
+        )
+        self.version = (
+            "paddleocr-3.6.0"
+            if self.engine == "paddleocr"
+            else "easyocr-1.7.2"
+        )
         self._reader: Any | None = None
 
-    def detect(self, image_path: str) -> List[Detection]:
-        """
-        이미지에서 텍스트를 추출한다.
-
-        EasyOCR readtext 결과는 (bbox, text, confidence) 형태다.
-        bbox는 4개 꼭짓점 좌표이며, 응답에서는 GeoJSON Polygon과
-        [x, y, width, height] bbox로 함께 제공한다.
-        """
+    def detect(
+        self,
+        image_path: str,
+        object_detections: List[Detection] | None = None,
+    ) -> List[Detection]:
+        """Extract text boxes and normalize them to the Detection schema."""
         if not Path(image_path).is_file():
             raise FileNotFoundError(f"Image file not found: {image_path}")
 
-        reader = self._get_reader()
-        raw_results = reader.readtext(image_path)
+        if self.engine == "paddleocr":
+            detections = self._detect_with_paddleocr(image_path)
+        else:
+            detections = self._detect_with_easyocr(image_path)
 
-        detections: List[Detection] = []
-        for raw_bbox, raw_text, raw_confidence in raw_results:
-            text = str(raw_text).strip()
-            confidence = self._clamp_confidence(raw_confidence)
-            if not text or confidence < settings.ocr_confidence_threshold:
-                continue
-
-            polygon = self._normalize_polygon(raw_bbox)
-            bbox = self._polygon_to_bbox(polygon)
-
-            detections.append(
-                Detection(
-                    detect_type="text",
-                    confidence=confidence,
-                    geom_px={
-                        "type": "Polygon",
-                        "coordinates": [polygon + [polygon[0]]],
-                    },
-                    bbox_px=bbox,
-                    label="ocr_text",
-                    ocr_text=text,
-                )
-            )
-
+        detections = self._exclude_icon_overlaps(
+            detections,
+            object_detections or [],
+        )
         detections = self._merge_stacked_texts(detections)
-        logger.info("Detected %d text regions from %s", len(detections), image_path)
+        logger.info(
+            "Detected %d text regions from %s with %s",
+            len(detections),
+            image_path,
+            self.engine,
+        )
         return detections
 
-    def _get_reader(self) -> Any:
-        """EasyOCR Reader는 무겁기 때문에 최초 요청 시 한 번만 생성한다."""
+    def _detect_with_easyocr(self, image_path: str) -> List[Detection]:
+        raw_results = self._get_easyocr_reader().readtext(image_path)
+        detections: List[Detection] = []
+        for raw_bbox, raw_text, raw_confidence in raw_results:
+            detection = self._to_detection(raw_bbox, raw_text, raw_confidence)
+            if detection is not None:
+                detections.append(detection)
+        return detections
+
+    def _detect_with_paddleocr(self, image_path: str) -> List[Detection]:
+        detections: List[Detection] = []
+        for result in self._get_paddleocr_reader().predict(image_path):
+            polygons = result.get("rec_polys", [])
+            texts = result.get("rec_texts", [])
+            scores = result.get("rec_scores", [])
+            for polygon, text, score in zip(polygons, texts, scores):
+                detection = self._to_detection(polygon, text, score)
+                if detection is not None:
+                    detections.append(detection)
+        return detections
+
+    def _to_detection(
+        self,
+        raw_bbox: Any,
+        raw_text: Any,
+        raw_confidence: Any,
+    ) -> Detection | None:
+        text = str(raw_text).strip()
+        confidence = self._clamp_confidence(raw_confidence)
+        if not text or confidence < settings.ocr_confidence_threshold:
+            return None
+
+        polygon = self._normalize_polygon(raw_bbox)
+        bbox = self._polygon_to_bbox(polygon)
+        if self._is_icon_like_text_artifact(text, bbox):
+            return None
+
+        return Detection(
+            detect_type="text",
+            confidence=confidence,
+            geom_px={
+                "type": "Polygon",
+                "coordinates": [polygon + [polygon[0]]],
+            },
+            bbox_px=bbox,
+            label="ocr_text",
+            ocr_text=text,
+        )
+
+    def _get_easyocr_reader(self) -> Any:
         if self._reader is None:
             try:
                 import easyocr
@@ -78,7 +119,7 @@ class TextDetector(Detector):
                 ) from exc
 
             self._reader = easyocr.Reader(
-                self._ocr_languages(),
+                self._easyocr_languages(),
                 gpu=settings.ocr_gpu,
                 model_storage_directory=settings.ocr_model_storage_dir,
                 download_enabled=settings.ocr_download_enabled,
@@ -86,14 +127,43 @@ class TextDetector(Detector):
             )
         return self._reader
 
-    @staticmethod
-    def _ocr_languages() -> List[str]:
-        """
-        OCR_LANGUAGE 설정을 EasyOCR 언어 목록으로 변환한다.
+    def _get_paddleocr_reader(self) -> Any:
+        if self._reader is None:
+            os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
+            try:
+                # On Windows, loading torch first avoids a Paddle/PyTorch DLL conflict.
+                import torch  # noqa: F401
+                from paddleocr import PaddleOCR
+            except ImportError as exc:
+                raise RuntimeError(
+                    "PaddleOCR is not installed. Run 'pip install -r requirements.txt'."
+                ) from exc
 
-        예: "ko" -> ["ko", "en"], "ko,en" -> ["ko", "en"].
-        EasyOCR 한국어 인식에는 영어가 함께 포함되어야 한다.
-        """
+            self._reader = PaddleOCR(
+                text_detection_model_name="PP-OCRv5_mobile_det",
+                text_recognition_model_name=self._paddleocr_model_name,
+                use_doc_orientation_classify=False,
+                use_doc_unwarping=False,
+                use_textline_orientation=False,
+                enable_mkldnn=settings.paddleocr_enable_mkldnn,
+            )
+        return self._reader
+
+    @staticmethod
+    def _easyocr_languages() -> List[str]:
+        configured = [
+            lang.strip()
+            for lang in settings.ocr_language.split(",")
+            if lang.strip()
+        ]
+        if not configured:
+            configured = ["ko"]
+        if "ko" in configured and "en" not in configured:
+            configured.append("en")
+        return configured
+
+    @staticmethod
+    def _paddleocr_recognition_model() -> str:
         configured = [
             lang.strip()
             for lang in settings.ocr_language.split(",")
@@ -102,10 +172,16 @@ class TextDetector(Detector):
         if not configured:
             configured = ["ko"]
 
-        if "ko" in configured and "en" not in configured:
-            configured.append("en")
-
-        return configured
+        model_names = {
+            "ko": "korean_PP-OCRv5_mobile_rec",
+            "en": "en_PP-OCRv5_mobile_rec",
+        }
+        if len(configured) != 1 or configured[0] not in model_names:
+            raise ValueError(
+                "PaddleOCR supports exactly one OCR_LANGUAGE value: 'ko' or 'en'. "
+                f"Received: {settings.ocr_language!r}"
+            )
+        return model_names[configured[0]]
 
     @staticmethod
     def _normalize_polygon(raw_bbox: Any) -> List[List[float]]:
@@ -131,16 +207,70 @@ class TextDetector(Detector):
     def _clamp_confidence(confidence: Any) -> float:
         return max(0.0, min(1.0, float(confidence)))
 
+    @staticmethod
+    def _is_icon_like_text_artifact(text: str, bbox: List[float]) -> bool:
+        """Reject short OCR results that are likely symbols inside square icons."""
+        _, _, width, height = bbox
+        compact_text = "".join(text.split())
+        is_short_ascii = compact_text.isascii() and len(compact_text) <= 2
+        is_single_non_ascii = not compact_text.isascii() and len(compact_text) == 1
+        if (
+            not (is_short_ascii or is_single_non_ascii)
+            or min(width, height) < 24
+        ):
+            return False
+
+        aspect_ratio = width / height if height else 0.0
+        return 0.65 <= aspect_ratio <= 1.35
+
+    @classmethod
+    def _exclude_icon_overlaps(
+        cls,
+        text_detections: List[Detection],
+        object_detections: List[Detection],
+    ) -> List[Detection]:
+        """Remove OCR regions located inside detected POI icon boxes."""
+        icon_boxes = [
+            detection.bbox_px
+            for detection in object_detections
+            if detection.bbox_px is not None
+        ]
+        if not icon_boxes:
+            return text_detections
+
+        return [
+            detection
+            for detection in text_detections
+            if detection.bbox_px is None
+            or not any(
+                cls._bbox_overlap_ratio(detection.bbox_px, icon_box) >= 0.5
+                for icon_box in icon_boxes
+            )
+        ]
+
+    @staticmethod
+    def _bbox_overlap_ratio(first_bbox: List[float], second_bbox: List[float]) -> float:
+        """Return intersection area as a ratio of the first box area."""
+        first_x, first_y, first_width, first_height = first_bbox
+        second_x, second_y, second_width, second_height = second_bbox
+        intersection_width = max(
+            0.0,
+            min(first_x + first_width, second_x + second_width)
+            - max(first_x, second_x),
+        )
+        intersection_height = max(
+            0.0,
+            min(first_y + first_height, second_y + second_height)
+            - max(first_y, second_y),
+        )
+        first_area = first_width * first_height
+        if first_area <= 0:
+            return 0.0
+        return intersection_width * intersection_height / first_area
+
     @classmethod
     def _merge_stacked_texts(cls, detections: List[Detection]) -> List[Detection]:
-        """
-        Merge tightly stacked OCR lines into one text detection.
-
-        Floorplan shop names are sometimes rendered on two lines, e.g.
-        "보테가" + "베네타". EasyOCR returns them as separate boxes, so this
-        merges only small boxes that are horizontally aligned and almost
-        touching vertically. Larger labels and legend rows stay separate.
-        """
+        """Merge tightly stacked OCR lines into one text detection."""
         unused = sorted(
             detections,
             key=lambda detection: (
@@ -153,7 +283,6 @@ class TextDetector(Detector):
         while unused:
             group = [unused.pop(0)]
             changed = True
-
             while changed:
                 changed = False
                 for candidate in list(unused):
@@ -162,7 +291,6 @@ class TextDetector(Detector):
                         unused.remove(candidate)
                         changed = True
                         break
-
             merged.append(cls._merge_text_group(group))
 
         return sorted(
@@ -186,7 +314,6 @@ class TextDetector(Detector):
 
         group_bbox = cls._union_bbox([member.bbox_px for member in group])
         candidate_bbox = candidate.bbox_px
-
         if not cls._is_mergeable_text_box(group_bbox):
             return False
         if not cls._is_mergeable_text_box(candidate_bbox):
@@ -264,7 +391,6 @@ class TextDetector(Detector):
         first_right = first_bbox[0] + first_bbox[2]
         second_left = second_bbox[0]
         second_right = second_bbox[0] + second_bbox[2]
-
         overlap = max(0.0, min(first_right, second_right) - max(first_left, second_left))
         smaller_width = min(first_bbox[2], second_bbox[2])
         if smaller_width <= 0:
