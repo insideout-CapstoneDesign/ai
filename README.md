@@ -29,7 +29,10 @@
 <div>
   <img src="https://img.shields.io/badge/OpenCV-5C3EE8?style=for-the-badge&logo=opencv&logoColor=white">
   <img src="https://img.shields.io/badge/YOLO-111111?style=for-the-badge">
-  <img src="https://img.shields.io/badge/EasyOCR-4B8BBE?style=for-the-badge">
+  <img src="https://img.shields.io/badge/PaddleOCR-D81E06?style=for-the-badge">
+  <img src="https://img.shields.io/badge/PyTorch-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white">
+  <img src="https://img.shields.io/badge/NumPy-013243?style=for-the-badge&logo=numpy&logoColor=white">
+  <img src="https://img.shields.io/badge/scikit--image-F7931E?style=for-the-badge">
 </div>
 
 ### Validation
