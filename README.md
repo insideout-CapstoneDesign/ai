@@ -16,14 +16,6 @@
 | 🔹 **Hybrid Navigation** <br> <sub>사용자 웹 - BE, FE</sub> | 🔹 **Auth, Search, Infra** <br> <sub>사용자 웹 - BE, FE</sub> | 🔹 **AI Map Builder** <br> <sub>관리자 웹 - AI, FE</sub> | 🔹 **Map Editor** <br> <sub>관리자 웹 - BE, FE</sub> |
 
 
-<img width="193" height="294" alt="스크린샷 2026-06-18 오후 5 24 11" src="https://github.com/user-attachments/assets/35081664-ee95-49bf-9bbf-0340df69f54b" />
-
-
-<img width="194" height="289" alt="스크린샷 2026-06-18 오후 5 24 19" src="https://github.com/user-attachments/assets/8d75a543-b6ef-4a57-86c2-e06d93e9376d" />
-
-<img width="194" height="290" alt="스크린샷 2026-06-18 오후 5 24 28" src="https://github.com/user-attachments/assets/d6335e5f-31a8-4ab6-9432-1269227ae012" />
-
-
 ## 🛠 기술 스택
 
 ### Core
