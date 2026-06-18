@@ -28,11 +28,11 @@
 ### AI / CV
 <div>
   <img src="https://img.shields.io/badge/OpenCV-5C3EE8?style=for-the-badge&logo=opencv&logoColor=white">
-  <img src="https://img.shields.io/badge/YOLO-111111?style=for-the-badge">
   <img src="https://img.shields.io/badge/PaddleOCR-D81E06?style=for-the-badge">
+  <img src="https://img.shields.io/badge/YOLO-111111?style=for-the-badge">
   <img src="https://img.shields.io/badge/PyTorch-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white">
-  <img src="https://img.shields.io/badge/NumPy-013243?style=for-the-badge&logo=numpy&logoColor=white">
   <img src="https://img.shields.io/badge/scikit--image-F7931E?style=for-the-badge">
+  <img src="https://img.shields.io/badge/NumPy-013243?style=for-the-badge&logo=numpy&logoColor=white">
 </div>
 
 ### Validation
@@ -42,7 +42,7 @@
 
 ## 🤖 AI 서비스 핵심 역할 (Core Responsibilities)
 ### 1. 실내 도면 이미지 분석
-실내 도면 이미지를 입력받아 벽, 공간, 출입구, 상점명 등 주요 객체를 자동으로 인식합니다.
+실내 도면 이미지를 입력받아 벽, 공간, 복도(통행로), 출입구, 상점명 등 주요 객체를 자동으로 인식합니다.
 도면의 해상도와 표기 방식이 달라도 최대한 일관된 분석 결과를 얻을 수 있도록 전처리와 후처리 과정을 함께 적용했습니다.
 - 도면 이미지 전처리
 - 객체 탐지 및 구조물 추출
@@ -53,7 +53,7 @@
 AI 분석 결과를 기반으로 관리자 웹에서 사용할 수 있는 길찾기 후보 데이터를 생성합니다.
 단순 이미지 인식이 아니라, 실제 실내 경로 그래프 구축에 필요한 구조로 데이터를 정리합니다.
 
-- POI 후보 추출
+- POI 후보 추출 
 - 노드 후보 추출
 - 엣지 후보 추출
 - 관리자 편집용 초안 데이터 생성
