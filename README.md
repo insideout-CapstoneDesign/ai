@@ -3,6 +3,19 @@
 실내 도면 이미지를 AI로 분석하여 노드, 엣지, POI 후보를 추출하는 FastAPI 서버입니다.
 백엔드(Spring Boot)로부터 분석 요청을 받아 결과를 JSON으로 반환합니다.
 
+---
+## 👥 팀원 소개 (Contributors)
+
+> **Insideout 프로젝트를 이끈 양양양말을 소개합니다.**
+
+
+| **차승은** | **이민지** | **김민준** | **김세현** |
+| :---: | :---: | :---: | :---: |
+| [<img src="https://github.com/user-attachments/assets/35081664-ee95-49bf-9bbf-0340df69f54b" height="180" width="130" style="border-radius: 8px;"><br/>](https://github.com/cktmddms) | [<img src="https://github.com/user-attachments/assets/8d75a543-b6ef-4a57-86c2-e06d93e9376d" height="180" width="130" style="border-radius: 8px;"><br/>](https://github.com/thisminji) | [<img src="https://github.com/user-attachments/assets/d6335e5f-31a8-4ab6-9432-1269227ae012" height="180" width="130" style="border-radius: 8px;"><br/>](https://github.com/minjune0) | [<img src="https://github.com/user-attachments/assets/40120ba5-e3c7-4048-9d54-cdfa837f7a6d" height="180" width="130" style="border-radius: 8px;"><br/>](https://github.com/sekong11) |
+| 🔹 **Hybrid Navigation** <br> <sub>사용자 웹 - BE, FE</sub> | 🔹 **Auth, Search, Infra** <br> <sub>사용자 웹 - BE, FE</sub> | 🔹 **AI Map Builder** <br> <sub>관리자 웹 - AI, FE</sub> | 🔹 **Map Editor** <br> <sub>관리자 웹 - BE, FE</sub> |
+
+---
+
 ## 🛠 기술 스택
 
 ### Core
