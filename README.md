@@ -3,13 +3,43 @@
 실내 도면 이미지를 AI로 분석하여 노드, 엣지, POI 후보를 추출하는 FastAPI 서버입니다.
 백엔드(Spring Boot)로부터 분석 요청을 받아 결과를 JSON으로 반환합니다.
 
+## 👥 팀원 소개 (Contributors)
+
+> **Insideout 프로젝트를 이끈 핵심 개발 팀원들을 소개합니다.**
+> 프로필 카드를 클릭하면 각 팀원의 GitHub로 이동합니다.
+
+| **차승은** | **이민지** | **김민준** | **김세현** |
+| :---: | :---: | :---: | :---: |
+| [<img src="https://github.com/user-attachments/assets/b8934531-3850-4310-9d34-5426db3ca85d" height="180" width="130" style="border-radius: 8px;"><br/>](#) | [<img src="https://github.com/user-attachments/assets/7acd5918-6b83-4b38-8f74-4cae6387f110" height="180" width="130" style="border-radius: 8px;"><br/>](https://github.com/thisminji) | [<img src="https://github.com/user-attachments/assets/e542ef64-72de-447f-ae42-b4aa5e1a1a3f" height="180" width="130" style="border-radius: 8px;"><br/>](#) | [<img src="https://github.com/user-attachments/assets/40120ba5-e3c7-4048-9d54-cdfa837f7a6d" height="180" width="130" style="border-radius: 8px;"><br/>](#) |
+| 🔹 **User Web** <br> <sub>실내외 통합 내비게이션</sub> | 🔹 **User Web** <br> <sub>실내외 통합 내비게이션</sub> | 🔹 **Admin Web** <br> <sub>지도/데이터 관리</sub> | 🔹 **Admin Web** <br> <sub>지도/데이터 관리</sub> |
+
+
+<img width="193" height="294" alt="스크린샷 2026-06-18 오후 5 24 11" src="https://github.com/user-attachments/assets/b8934531-3850-4310-9d34-5426db3ca85f" />
+<img width="194" height="289" alt="스크린샷 2026-06-18 오후 5 24 19" src="https://github.com/user-attachments/assets/7acd5918-6b83-4b38-8f74-4cae6387f110" />
+<img width="194" height="290" alt="스크린샷 2026-06-18 오후 5 24 28" src="https://github.com/user-attachments/assets/e542ef64-72de-447f-ae42-b4aa5e1a1a3f" />
+<img width="195" height="294" alt="스크린샷 2026-06-18 오후 5 24 34" src="https://github.com/user-attachments/assets/40120ba5-e3c7-4048-9d54-cdfa837f7a6d" />
+
+
 ## 🛠 기술 스택
 
-- **Language**: Python 3.11+
-- **Framework**: FastAPI
-- **Server**: Uvicorn
-- **AI/CV**: OpenCV, YOLO, EasyOCR (예정)
-- **Validation**: Pydantic v2
+### Core
+<div>
+  <img src="https://img.shields.io/badge/Python%203.11+-3776AB?style=for-the-badge&logo=python&logoColor=white">
+  <img src="https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white">
+  <img src="https://img.shields.io/badge/Uvicorn-646CFF?style=for-the-badge">
+</div>
+
+### AI / CV
+<div>
+  <img src="https://img.shields.io/badge/OpenCV-5C3EE8?style=for-the-badge&logo=opencv&logoColor=white">
+  <img src="https://img.shields.io/badge/YOLO-111111?style=for-the-badge">
+  <img src="https://img.shields.io/badge/EasyOCR-4B8BBE?style=for-the-badge">
+</div>
+
+### Validation
+<div>
+  <img src="https://img.shields.io/badge/Pydantic%20v2-E92063?style=for-the-badge">
+</div>
 
 ## 📋 요구사항
 
