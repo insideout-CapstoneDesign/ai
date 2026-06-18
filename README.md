@@ -9,11 +9,19 @@
 
 > **Insideout 프로젝트를 이끈 양양양말을 소개합니다.**
 
+
 | **차승은** | **이민지** | **김민준** | **김세현** |
 | :---: | :---: | :---: | :---: |
-| [<img src="https://github.com/user-attachments/assets/b8934531-3850-4310-9d34-5426db3ca85d" height="180" width="130" style="border-radius: 8px;"><br/>](https://github.com/cktmddms) | [<img src="https://github.com/user-attachments/assets/7acd5918-6b83-4b38-8f74-4cae5918f110" height="180" width="130" style="border-radius: 8px;"><br/>](https://github.com/thisminji) | [<img src="https://github.com/user-attachments/assets/e542ef64-72de-447f-ae42-b4aa5e1a3f" height="180" width="130" style="border-radius: 8px;"><br/>](https://github.com/minjune0) | [<img src="https://github.com/user-attachments/assets/40120ba5-e3c7-4048-9d54-cdfa837f7a6d" height="180" width="130" style="border-radius: 8px;"><br/>](https://github.com/sekong11) |
+| [<img src="https://github.com/user-attachments/assets/35081664-ee95-49bf-9bbf-0340df69f54b" height="180" width="130" style="border-radius: 8px;"><br/>](https://github.com/cktmddms) | [<img src="https://github.com/user-attachments/assets/8d75a543-b6ef-4a57-86c2-e06d93e9376d" height="180" width="130" style="border-radius: 8px;"><br/>](https://github.com/thisminji) | [<img src="https://github.com/user-attachments/assets/d6335e5f-31a8-4ab6-9432-1269227ae012" height="180" width="130" style="border-radius: 8px;"><br/>](https://github.com/minjune0) | [<img src="https://github.com/user-attachments/assets/40120ba5-e3c7-4048-9d54-cdfa837f7a6d" height="180" width="130" style="border-radius: 8px;"><br/>](https://github.com/sekong11) |
 | 🔹 **Hybrid Navigation** <br> <sub>사용자 웹 - BE, FE</sub> | 🔹 **Auth, Search, Infra** <br> <sub>사용자 웹 - BE, FE</sub> | 🔹 **AI Map Builder** <br> <sub>관리자 웹 - AI, FE</sub> | 🔹 **Map Editor** <br> <sub>관리자 웹 - BE, FE</sub> |
 
+
+<img width="193" height="294" alt="스크린샷 2026-06-18 오후 5 24 11" src="https://github.com/user-attachments/assets/35081664-ee95-49bf-9bbf-0340df69f54b" />
+
+
+<img width="194" height="289" alt="스크린샷 2026-06-18 오후 5 24 19" src="https://github.com/user-attachments/assets/8d75a543-b6ef-4a57-86c2-e06d93e9376d" />
+
+<img width="194" height="290" alt="스크린샷 2026-06-18 오후 5 24 28" src="https://github.com/user-attachments/assets/d6335e5f-31a8-4ab6-9432-1269227ae012" />
 
 
 ## 🛠 기술 스택
