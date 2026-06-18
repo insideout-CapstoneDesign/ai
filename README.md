@@ -3,19 +3,6 @@
 실내 도면 이미지를 AI로 분석하여 노드, 엣지, POI 후보를 추출하는 FastAPI 서버입니다.
 백엔드(Spring Boot)로부터 분석 요청을 받아 결과를 JSON으로 반환합니다.
 
-
-
-## 👥 팀원 소개 (Contributors)
-
-> **Insideout 프로젝트를 이끈 양양양말을 소개합니다.**
-
-
-| **차승은** | **이민지** | **김민준** | **김세현** |
-| :---: | :---: | :---: | :---: |
-| [<img src="https://github.com/user-attachments/assets/35081664-ee95-49bf-9bbf-0340df69f54b" height="180" width="130" style="border-radius: 8px;"><br/>](https://github.com/cktmddms) | [<img src="https://github.com/user-attachments/assets/8d75a543-b6ef-4a57-86c2-e06d93e9376d" height="180" width="130" style="border-radius: 8px;"><br/>](https://github.com/thisminji) | [<img src="https://github.com/user-attachments/assets/d6335e5f-31a8-4ab6-9432-1269227ae012" height="180" width="130" style="border-radius: 8px;"><br/>](https://github.com/minjune0) | [<img src="https://github.com/user-attachments/assets/40120ba5-e3c7-4048-9d54-cdfa837f7a6d" height="180" width="130" style="border-radius: 8px;"><br/>](https://github.com/sekong11) |
-| 🔹 **Hybrid Navigation** <br> <sub>사용자 웹 - BE, FE</sub> | 🔹 **Auth, Search, Infra** <br> <sub>사용자 웹 - BE, FE</sub> | 🔹 **AI Map Builder** <br> <sub>관리자 웹 - AI, FE</sub> | 🔹 **Map Editor** <br> <sub>관리자 웹 - BE, FE</sub> |
-
-
 ## 🛠 기술 스택
 
 ### Core
@@ -37,160 +24,78 @@
   <img src="https://img.shields.io/badge/Pydantic%20v2-E92063?style=for-the-badge">
 </div>
 
-## 📋 요구사항
+## 🤖 AI 서비스 핵심 역할 (Core Responsibilities)
+### 1. 실내 도면 이미지 분석
+실내 도면 이미지를 입력받아 벽, 공간, 출입구, 상점명 등 주요 객체를 자동으로 인식합니다.
+도면의 해상도와 표기 방식이 달라도 최대한 일관된 분석 결과를 얻을 수 있도록 전처리와 후처리 과정을 함께 적용했습니다.
+- 도면 이미지 전처리
+- 객체 탐지 및 구조물 추출
+- 텍스트 OCR 인식
+- 분석 결과 JSON 반환
+---
+### 2. 노드, 엣지, POI 후보 추출
+AI 분석 결과를 기반으로 관리자 웹에서 사용할 수 있는 길찾기 후보 데이터를 생성합니다.
+단순 이미지 인식이 아니라, 실제 실내 경로 그래프 구축에 필요한 구조로 데이터를 정리합니다.
 
-- **Python 3.11 이상** (안정성 및 향후 호환성을 위해 3.11+ 권장)
-- 4GB 이상 RAM (AI 모델 로딩 시)
+- POI 후보 추출
+- 노드 후보 추출
+- 엣지 후보 추출
+- 관리자 편집용 초안 데이터 생성
+---
+### 3. 관리자 웹 초기 데이터 공급
+AI가 만든 초안은 그대로 운영 데이터로 쓰지 않고, 백엔드와 관리자 웹의 맵 에디터가 활용할 수 있도록 전달됩니다.
+관리자는 이 결과를 검토하고 수정한 뒤 최종 배포할 수 있습니다.
 
-## 🚀 빠른 시작
-
-### 1. 사전 준비
-
-Python 3.11이 설치되어 있는지 확인:
-
-```bash
-python3.11 --version
-# Python 3.11.x 가 떠야 정상
+- Draft 초기화용 데이터 제공
+- 맵 에디터 연동용 응답 포맷 통일
+- 텍스트, 오브젝트, POI, 노드/엣지 결과 분리 반환
+---
+### 4. 캠퍼스 및 건물 도면 분석
+실내 도면뿐 아니라 단지 또는 캠퍼스 형태의 이미지 분석도 지원하여, 건물 단위와 캠퍼스 단위의 초기 맵 구축을 보조합니다.
+- 건물 도면 분석
+- 캠퍼스 지도 분석
+- 분석 타입별 결과 분기 처리
+---
+## 🔄 AI 분석 흐름 (Data Flow)
+```mermaid
+flowchart LR
+    A["도면 이미지 업로드"] --> B["이미지 전처리"]
+    B --> C["객체 탐지"]
+    B --> D["OCR 텍스트 추출"]
+    C --> E["노드/엣지/POI 후보 생성"]
+    D --> E
+    E --> F["결과 정규화"]
+    F --> G["JSON 응답 반환"]
+    G --> H["Spring Boot 백엔드 저장"]
+    H --> I["관리자 웹 맵 에디터 반영"]
 ```
+## 📌 주요 API 명세 요약
+### Floorplan Analysis API
+| Method |	Endpoint	| Description |
+| :---: | :---: | :---: | 
+| POST |	/api/v1/ai/floorplans/{floorplanId}/analyze	| 실내 도면 AI 분석 요청 |
+| GET	| /api/v1/ai/floorplans/{floorplanId}/detections	| 실내 도면 분석 결과 조회 |
 
-없다면 Homebrew(MAC)로 설치:
+### Campus Analysis API
+| Method	| Endpoint	| Description |
+| :---: | :---: | :---: |
+|POST	 | /api/v1/ai/campuses/{campusMapId}/analyze	| 캠퍼스 지도 AI 분석 요청 |
+| GET	| /api/v1/ai/campuses/{campusMapId}/detections	| 캠퍼스 지도 분석 결과 조회 |
 
-```bash
-brew install python@3.11
-```
+---
 
-### Windows
-
-1. [python.org/downloads](https://www.python.org/downloads/)에서 **Python 3.11** Windows installer를 다운로드합니다.
-2. 설치 첫 화면에서 **"Add python.exe to PATH"** 를 반드시 체크한 후 `Install Now`를 클릭합니다.
-3. 설치 완료 후 CMD 또는 PowerShell에서 버전을 확인합니다:
-```bat
-   python --version
-   # Python 3.11.x 가 떠야 정상
-   ```
-4. 가상환경 활성화 명령어는 **Windows에서 다릅니다** 2번 내용이 아닌 이 내용을 참고해주세요:
-   ```bat
-   python -m venv .venv
-   .venv\Scripts\activate
-   ```
-
-### 2. 프로젝트 클론 및 가상환경 설정
-
-```bash
-git clone https://github.com/insideout-CapstoneDesign/ai.git
-cd ai
-
-# 가상환경 생성 (반드시 python3.11 명시)
-python3.11 -m venv .venv
-
-# 활성화
-source .venv/bin/activate
-
-# 프롬프트에 (.venv)가 보이면 OK
-```
-
-### 3. 의존성 설치
-
-```bash
-pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-### 4. 서버 실행
-
-```bash
-uvicorn app.main:app --reload --port 8000
-```
-
-### 5. 동작 확인
-
-| URL | 설명 |
-|---|---|
-| `http://localhost:8000/` | 서버 상태 메시지 |
-| `http://localhost:8000/health` | 헬스체크 |
-| `http://localhost:8000/docs` | **Swagger UI (API 문서)** |
-
-## 📁 프로젝트 구조
-
-```text
-ai/
-├── app/
-│   ├── __init__.py
-│   ├── main.py                    # FastAPI 진입점
-│   ├── routers/
-│   │   ├── __init__.py
-│   │   └── analyze.py             # /api/v1/analyze 엔드포인트
-│   ├── schemas/
-│   │   ├── __init__.py
-│   │   └── analyze.py             # 요청/응답 Pydantic 모델
-│   └── services/
-│       ├── __init__.py
-│       ├── base.py                # Detector 추상 베이스 클래스
-│       ├── text_detector.py       # OCR 추출
-│       ├── object_detector.py     # 벽/문/엘리베이터 등 감지
-│       ├── poi_detector.py        # POI 후보 추출
-│       └── graph_detector.py      # 노드/엣지 후보 추출
-├── .gitignore
-├── README.md
-└── requirements.txt
-```
-
-## 🔌 API
-
-전체 API 문서는 서버 실행 후 [Swagger UI](http://localhost:8000/docs)에서 확인 가능합니다.
-
-### 주요 엔드포인트
-
-| Method | Path | 설명 |
-|---|---|---|
-| GET | `/` | 서버 상태 확인 |
-| GET | `/health` | 헬스체크 |
-| POST | `/api/v1/analyze` | 도면 이미지 분석 |
-
-## 🏗 아키텍처
-
-```text
-[Spring Boot 백엔드] ──HTTP POST──▶ [FastAPI AI 서버]
-                                          │
-                                          ├─ TextDetector  (OCR)
-                                          ├─ ObjectDetector (YOLO/OpenCV)
-                                          ├─ PoiDetector   (POI 추출)
-                                          └─ GraphDetector (노드/엣지)
-                                          │
-                                          ▼ JSON 응답
-                                    [백엔드가 DB에 저장]
-```
-
-각 detector는 `Detector` 추상 베이스 클래스를 상속받아 동일한 인터페이스를 따릅니다.
-
-## 👥 개발 가이드
-
-### 가상환경 종료
-
-```bash
-deactivate
-```
-
-### 새 의존성 추가 시
-
-```bash
-pip install <패키지명>
-pip freeze > requirements.txt
-```
-
-### 브랜치 전략
-
-- `main`: 배포 가능 상태 (직접 push 금지)
-- `dev`: 개발 통합 브랜치
-- `feat/이슈번호-설명`: 기능 브랜치
-
-### 커밋 컨벤션
-
-```text
-type: 설명 (#이슈번호)
-
-예시:
-feat: 분석 API 스켈레톤 추가 (#4)
-fix: model_version null 처리 (#4)
-docs: README 작성 (#5)
-```
+## 🔥 기술적 도전 및 해결 과제 (Technical Challenges)
+### 1. 도면 품질 차이로 인한 분석 결과 불안정성
+* **문제**: 도면마다 해상도, 축척, 표기 방식이 달라 동일한 모델을 적용해도 결과가 일관되지 않았습니다.
+* **해결**: 전처리 단계에서 이미지 특성을 보정하고, 후처리 단계에서 결과를 정규화하여 관리자 웹에서 활용 가능한 형태로 변환했습니다.
+---
+### 2. 텍스트와 구조물 정보를 함께 다뤄야 하는 문제
+* **문제**: 실내 지도는 단순 객체 탐지뿐 아니라 매장명, 층수, 출입구 표시 같은 텍스트 정보도 중요합니다.
+* **해결**: OCR 결과와 객체 탐지 결과를 분리해서 수집한 뒤, 하나의 JSON 구조로 합쳐 맵 에디터 초기 데이터로 사용할 수 있게 했습니다.
+---
+### 3. AI 결과를 운영 데이터로 바로 쓰기 어려운 문제
+* **문제**: 탐지 결과에는 오탐이나 누락이 존재할 수 있어 그대로 서비스에 반영하면 경로 오류가 발생할 수 있습니다.
+* **해결**: AI 결과를 초안 데이터로만 사용하고, 관리자 웹에서 검토 및 수정 후 배포하는 구조로 설계했습니다.
+### 4. 백엔드와의 응답 구조 정합성 유지
+* **문제**: AI 서버가 다양한 분석 타입을 반환하더라도 백엔드가 일관되게 처리할 수 있어야 했습니다.
+* **해결**: Pydantic 기반 응답 모델을 사용해 타입별 결과 형식을 통일하고, 백엔드가 안정적으로 저장할 수 있도록 했습니다.
